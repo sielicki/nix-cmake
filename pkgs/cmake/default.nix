@@ -41,16 +41,20 @@ let
 in
 stdenv.mkDerivation rec {
   pname = "cmake";
-  version = "4.0.3";
+  version = "4.2.1";
 
   src = fetchFromGitHub {
     owner = "Kitware";
     repo = "CMake";
     rev = "v${version}";
-    hash = "sha256-VSn+f/sIbUkXAS3NgxO+aoFTG/OOGxxvp96VXFRlTLI=";
+    hash = "sha256-lZ46Zq2HUDFw8J2kj4C6aclEWXy1MNOIKD9PVQ9WP8s=";
   };
 
-  
+  # CMake 4.2 brings features important for nix-cmake:
+  # - Enhanced file-based API (codemodel v2.9) with imported targets
+  # - Improved link dependency tracking (linkLibraries, interfaceLinkLibraries)
+  # - Better transitive dependency support
+  # - Foundation for CPS (Common Package Specification) integration
   depsBuildBuild = with buildPackages; [ stdenv.cc ninja which cmakeMinimal sysctl ];
   nativeBuildInputs = setupHooks ++ [ installShellFiles ];
 

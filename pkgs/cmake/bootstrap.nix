@@ -2,14 +2,14 @@
   installShellFiles,
   buildPackages,
   callPackage,
-  cmakeDependencyHook,
+  darwin,
   fetchFromGitHub,
   gitUpdater,
-  cmakeToolchainHook,
   lib,
   libidn2,
   ninja,
   ps,
+  sysctl,
   stdenv,
 #  zlib,
 #curlMinimal ? null,
@@ -17,23 +17,37 @@
 let
 pkg = stdenv.mkDerivation rec {
   pname = "cmakeMinimal";
-  version = "4.0.3";
+  version = "4.2.1";
 
   src = fetchFromGitHub {
     owner = "Kitware";
     repo = "CMake";
     rev = "v${version}";
-    hash = "sha256-VSn+f/sIbUkXAS3NgxO+aoFTG/OOGxxvp96VXFRlTLI=";
+    hash = "sha256-lZ46Zq2HUDFw8J2kj4C6aclEWXy1MNOIKD9PVQ9WP8s=";
   };
 
-  
+
   depsBuildBuild = with buildPackages; [ stdenv.cc ninja which ];
-  nativeBuildInputs = [ cmakeDependencyHook installShellFiles ];
+
+  # Don't use cmakeDependencyHook during bootstrap - it would interfere
+  # Include ps, sysctl, and sw_vers in nativeBuildInputs for the bootstrap build itself
+  nativeBuildInputs = [ installShellFiles ps sysctl ]
+    ++ lib.optionals stdenv.hostPlatform.isDarwin [ darwin.DarwinTools darwin.system_cmds ];
+
+  # Also propagate these tools to packages that use cmake
+  # This ensures they're available when CMake runs platform detection
+  # This avoids needing to patch CMake source code with hardcoded paths
+  propagatedNativeBuildInputs = [ ps sysctl ]
+    ++ lib.optionals stdenv.hostPlatform.isDarwin [ darwin.DarwinTools darwin.system_cmds ];
 
   outputs = [ "out" ];
   separateDebugInfo = true;
   setOutputFlags = false;
-  buildInputs = [ ps (lib.getDev libidn2) (lib.getLib libidn2) ] ++ 
+
+  # Provide basic CMake setup hook for packages that use cmakeMinimal as a build dependency
+  setupHooks = [ ./setup-hook.sh ];
+
+  buildInputs = [ (lib.getDev libidn2) (lib.getLib libidn2) ] ++ 
     #  (lib.optionals (curlMinimal == null) [
     #  (lib.getDev curlMinimal) (lib.getLib curlMinimal) 
     #  (lib.getDev zlib) (lib.getLib zlib) 
@@ -79,7 +93,12 @@ pkg = stdenv.mkDerivation rec {
     bootstrap-system-librhash = false;
     system-cppdap = false;
     verbose = true;
-    init = "${../cmake-dependency-hook/cmakeBuildHook.cmake}";
+    # NOTE: Don't use --init during bootstrap!
+    # The bootstrap process doesn't use project() in the normal way,
+    # so CMAKE_PROJECT_TOP_LEVEL_INCLUDES would try to set the dependency
+    # provider outside of project() context, which is an error.
+    # The bootstrap build doesn't need FetchContent interception anyway.
+    # init = "${../cmake-dependency-hook/cmakeBuildHook.cmake}";
   }) ++ [
         "--"
         "-DCMAKE_USE_OPENSSL=OFF"
@@ -117,9 +136,5 @@ pkg = stdenv.mkDerivation rec {
     mainProgram = "cmake";
   };
 };
-in pkg.overrideAttrs(prev: prev // {
-  setupHooks = [
-    cmakeToolchainHook
-    cmakeDependencyHook
-  ];
-})
+# Bootstrap cmake is minimal - no hooks, they would create circular dependencies
+in pkg

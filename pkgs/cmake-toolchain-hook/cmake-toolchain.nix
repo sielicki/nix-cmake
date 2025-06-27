@@ -11,8 +11,8 @@ let
   
   #ccPath = "${lib.meta.getExe cc.cc}";
   #cxxPath = "${lib.meta.getExe cc.cc}++";
-  ccPath = "${cc.cc}/bin/${cc.meta.mainProgram}";
-  cxxPath = "${cc.cc}/bin/${cc.meta.mainProgram}++";
+  ccPath = "${cc.cc}/bin/${if cc.isClang then "clang" else "gcc"}";
+  cxxPath = "${cc.cc}/bin/${if cc.isClang then "clang++" else "g++"}";
   arPath = "${bintools.bintools}/bin/${cc.targetPrefix}ar";
   ranlibPath = "${bintools.bintools}/bin/${cc.targetPrefix}ranlib";
   stripPath = "${bintools.bintools}/bin/${cc.targetPrefix}strip";
@@ -53,6 +53,7 @@ in writeTextFile {
     # - hostPlatform: ${hostPlatform.config}
     # - buildPlatform: ${buildPlatform.config}
     # - Cross-compiling: ${lib.boolToString isCross}
+    cmake_policy(PUSH)
     cmake_minimum_required(VERSION 3.24)
     set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
     set(CMAKE_VERBOSE_MAKEFILE ON)
@@ -135,7 +136,7 @@ in writeTextFile {
     # ============================================================================
     # Build Configuration Defaults
     # ============================================================================
-    set(BUILD_SHARED_LIBS ${if stdenv.hostPlatform.isStatic then "ON" else "OFF"} CACHE BOOL "Build shared libraries by default")
+    set(BUILD_SHARED_LIBS ${if stdenv.hostPlatform.isStatic then "OFF" else "ON"} CACHE BOOL "Build shared libraries by default")
     #include(GNUInstallDirs)
     
     # ============================================================================
@@ -166,5 +167,6 @@ in writeTextFile {
     
     # Mark toolchain as configured
     set(NIX_CMAKE_TOOLCHAIN_CONFIGURED TRUE)
+    cmake_policy(POP)
   '';
 }

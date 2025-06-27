@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "dependencies": {
+    "fmt": {
+      "name": "fmt",
+      "version": "10.2.1",
+      "method": "fetchFromGitHub",
+      "args": {
+        "owner": "fmtlib",
+        "repo": "fmt",
+        "rev": "10.2.1",
+        "hash": "sha256-yb1Q8VGXmBMXrXvt5V1+VCbWlg5UxAlADCa8g9p7tX4="
+      },
+      "metadata": {
+        "gitRepository": "https://github.com/fmtlib/fmt.git",
+        "gitTag": "10.2.1"
+      }
+    }
+  }
+}
