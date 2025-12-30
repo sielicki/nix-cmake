@@ -1,6 +1,38 @@
 cmake_policy(PUSH)
 cmake_minimum_required(VERSION 3.24)
 
+# Set FetchContent source directories from environment variables
+# This must happen BEFORE any FetchContent calls, including FetchContent_Populate
+# which is not intercepted by the dependency provider but does check these cache variables.
+#
+# Background: The dependency provider (registered below) only intercepts:
+#   - FETCHCONTENT_MAKEAVAILABLE_SERIAL
+#   - FIND_PACKAGE
+#
+# However, CPM.cmake and some other tools call the deprecated FetchContent_Populate()
+# directly, which bypasses the dependency provider entirely. FetchContent_Populate()
+# does check FETCHCONTENT_SOURCE_DIR_<UPPERCASENAME> CMake cache variables, so we
+# set those from environment variables here to support both interception methods.
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E environment
+    OUTPUT_VARIABLE _all_env_vars
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REPLACE "\n" ";" _env_var_list "${_all_env_vars}")
+foreach(_env_line IN LISTS _env_var_list)
+    if(_env_line MATCHES "^(FETCHCONTENT_SOURCE_DIR_[^=]+)=(.*)$")
+        set(_var_name "${CMAKE_MATCH_1}")
+        set(_var_value "${CMAKE_MATCH_2}")
+        message(STATUS "Nix: Setting ${_var_name} from environment to ${_var_value}")
+        set(${_var_name} "${_var_value}" CACHE PATH "Nix-provided source directory" FORCE)
+    endif()
+endforeach()
+unset(_all_env_vars)
+unset(_env_var_list)
+unset(_env_line)
+unset(_var_name)
+unset(_var_value)
+
 # Track if the provider was actually used
 set_property(GLOBAL PROPERTY NIX_PROVIDER_TRIGGERED FALSE)
 
@@ -413,6 +445,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
                 # Check if we have a pre-fetched source from Nix via environment variable
                 string(TOUPPER "${dep_name}" _dep_name_upper)
                 set(_env_var_name "FETCHCONTENT_SOURCE_DIR_${_dep_name_upper}")
+                message(STATUS "Nix DEBUG: Checking for env var ${_env_var_name}")
                 if(DEFINED ENV{${_env_var_name}})
                     set(_nix_source_dir "$ENV{${_env_var_name}}")
                     message(STATUS "Nix: Using pre-fetched source for ${dep_name} from ${_nix_source_dir}")
@@ -422,6 +455,8 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
 
                     # Also set it in the current scope for immediate use
                     set(FETCHCONTENT_SOURCE_DIR_${_dep_name_upper} "${_nix_source_dir}")
+                else()
+                    message(STATUS "Nix DEBUG: ${_env_var_name} is NOT defined in environment")
                 endif()
             endif()
 

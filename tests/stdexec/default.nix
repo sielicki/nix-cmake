@@ -28,7 +28,7 @@ workspace.buildPackage {
 
   src = stdexecSrc;
 
-  nativeBuildInputs = [ rapids-cmake ];
+  nativeBuildInputs = [ rapids-cmake pkgs.git ];
 
   cmakeFlags = [
     "-DSTDEXEC_BUILD_TESTS=OFF"

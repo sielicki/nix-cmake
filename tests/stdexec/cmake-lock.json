@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "dependencies": {
+    "icm": {
+      "name": "icm",
+      "version": "1.5.0",
+      "method": "fetchFromGitHub",
+      "args": {
+        "owner": "iboB",
+        "repo": "icm",
+        "rev": "v1.5.0",
+        "hash": "sha256-lvxgCTp6MnhG/8Iii1kzY0hal/V384ta3PNja0aRZDo="
+      },
+      "metadata": {
+        "gitRepository": "https://github.com/iboB/icm.git",
+        "gitTag": "v1.5.0"
+      }
+    }
+  }
+}

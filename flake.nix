@@ -61,6 +61,11 @@
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;
             rapids-cmake = self'.packages.rapids-cmake;
           };
+          stdexec-build = pkgs.callPackage ./tests/stdexec/default.nix {
+            cmake = self'.packages.cmakeMinimal;
+            cmakeDependencyHook = self'.packages.cmakeDependencyHook;
+            rapids-cmake = self'.packages.rapids-cmake;
+          };
         };
 
         # TODO: Re-enable overlay once we figure out stdenv bootstrap
