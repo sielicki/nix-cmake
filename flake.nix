@@ -4,12 +4,18 @@
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "https://flakehub.com/f/DeterminateSystems/nixpkgs-weekly/0.1.914780";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
+    pre-commit-hooks.url = "github:cachix/git-hooks.nix";
+    pre-commit-hooks.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         inputs.flake-parts.flakeModules.easyOverlay
+        inputs.treefmt-nix.flakeModule
+        inputs.pre-commit-hooks.flakeModule
       ];
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
       perSystem = { config, final, self', inputs', pkgs, system, ... }: {
@@ -18,7 +24,7 @@
         packages = {
           cmakeToolchainHook = pkgs.callPackage ./pkgs/cmake-toolchain-hook { };
           cmakeDependencyHook = (pkgs.callPackage ./pkgs/cmake-dependency-hook { }).setupHook;
-          cmakeMinimal = pkgs.callPackage ./pkgs/cmake/bootstrap.nix {};
+          cmakeMinimal = pkgs.callPackage ./pkgs/cmake/bootstrap.nix { };
           cmake = pkgs.callPackage ./pkgs/cmake {
             cmakeMinimal = self'.packages.cmakeMinimal;
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;
@@ -69,6 +75,25 @@
             cmake = self'.packages.cmakeMinimal;
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;
             rapids-cmake = self'.packages.rapids-cmake;
+          };
+          cmake2nix-cpp = self'.packages.cmake2nix-cpp;
+        };
+
+        # Formatting configuration
+        treefmt.config = {
+          projectRootFile = "flake.nix";
+          programs = {
+            nixpkgs-fmt.enable = true;
+            clang-format.enable = true;
+          };
+        };
+
+        # Pre-commit hooks configuration
+        pre-commit.settings = {
+          hooks = {
+            treefmt.enable = true;
+            nixpkgs-fmt.enable = true;
+            clang-format.enable = true;
           };
         };
 

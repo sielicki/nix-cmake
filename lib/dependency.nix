@@ -55,15 +55,17 @@ let
     let
       deps = loadDiscoveryLog logPath;
       # Create an attrset of dependencies indexed by name
-      lockDeps = builtins.listToAttrs (map (dep: {
-        name = dep.name;
-        value = (deriveFetcher dep) // {
-          inherit (dep) name;
-          version = dep.version or "unknown";
-          # Keep original metadata for reference
-          metadata = builtins.removeAttrs dep [ "name" "hash" ];
-        };
-      }) deps);
+      lockDeps = builtins.listToAttrs (map
+        (dep: {
+          name = dep.name;
+          value = (deriveFetcher dep) // {
+            inherit (dep) name;
+            version = dep.version or "unknown";
+            # Keep original metadata for reference
+            metadata = builtins.removeAttrs dep [ "name" "hash" ];
+          };
+        })
+        deps);
     in
     {
       version = "1.0";

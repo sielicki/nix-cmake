@@ -1,6 +1,7 @@
 #include "cmake2nix.hpp"
-#include <fstream>
+
 #include <fmt/core.h>
+#include <fstream>
 
 namespace cmake2nix {
 

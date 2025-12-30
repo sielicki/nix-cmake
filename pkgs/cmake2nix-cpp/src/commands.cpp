@@ -1,4 +1,5 @@
 #include "cmake2nix.hpp"
+
 #include <fmt/core.h>
 #include <fstream>
 
@@ -37,8 +38,7 @@ void generate(const Config& config) {
     auto lock = lockfile::load(config.lock_file);
     auto info = parser::parse_cmake_lists(config.input_file);
 
-    fmt::print("cmake2nix: Generating Nix expressions for {} v{}\n",
-              info.pname, info.version);
+    fmt::print("cmake2nix: Generating Nix expressions for {} v{}\n", info.pname, info.version);
 
     generator::write_all(config, lock, info);
 }
@@ -90,10 +90,8 @@ void shell(const Config& config) {
     auto composition = config.output_dir / config.composition_nix;
 
     if (!fs::exists(composition)) {
-        throw std::runtime_error(
-            "Composition file not found: " + composition.string() +
-            "\nRun 'cmake2nix generate' first"
-        );
+        throw std::runtime_error("Composition file not found: " + composition.string() +
+                                 "\nRun 'cmake2nix generate' first");
     }
 
     std::string cmd = fmt::format("nix-shell {} -A shell", composition.string());
@@ -104,10 +102,8 @@ void build(const Config& config) {
     auto composition = config.output_dir / config.composition_nix;
 
     if (!fs::exists(composition)) {
-        throw std::runtime_error(
-            "Composition file not found: " + composition.string() +
-            "\nRun 'cmake2nix generate' first"
-        );
+        throw std::runtime_error("Composition file not found: " + composition.string() +
+                                 "\nRun 'cmake2nix generate' first");
     }
 
     std::string cmd = fmt::format("nix-build {} -A package", composition.string());

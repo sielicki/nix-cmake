@@ -1,30 +1,31 @@
 #include "cmake2nix.hpp"
+
+#include <array>
+#include <cstdlib>
 #include <fmt/core.h>
 #include <fstream>
-#include <cstdlib>
-#include <array>
 #include <memory>
 #include <regex>
 
 namespace cmake2nix::discovery {
 
 namespace {
-    std::string exec_command(const std::string& cmd) {
-        std::array<char, 128> buffer;
-        std::string result;
-        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+std::string exec_command(const std::string& cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
 
-        if (!pipe) {
-            throw std::runtime_error("popen() failed!");
-        }
-
-        while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-            result += buffer.data();
-        }
-
-        return result;
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
     }
+
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+
+    return result;
 }
+} // namespace
 
 std::vector<Dependency> run(const Config& config) {
     fmt::print("cmake2nix: Discovering dependencies from {}\n", config.input_file.string());
@@ -52,8 +53,9 @@ let
   workspace = nix-cmake.workspace pkgs;
 in
 workspace.discoverDependencies {
-  src = )" + config.input_file.parent_path().string() + R"(;
-  cmakeFlags = [)" ;
+  src = )" + config.input_file.parent_path().string() +
+                           R"(;
+  cmakeFlags = [)";
 
     for (const auto& flag : config.cmake_flags) {
         nix_expr += " \"" + flag + "\"";
@@ -100,7 +102,8 @@ std::vector<Dependency> parse_discovery_log(const fs::path& log_file) {
 
     std::string line;
     while (std::getline(file, line)) {
-        if (line.empty()) continue;
+        if (line.empty())
+            continue;
 
         try {
             json j = json::parse(line);

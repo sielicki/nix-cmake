@@ -5,10 +5,11 @@ let
   cmakeToolchainGenerator = import ./cmake-toolchain.nix {
     inherit lib writeTextFile writeShellScript;
   };
-  
+
   cmakeToolchain = cmakeToolchainGenerator stdenv;
 in
-makeSetupHook {
+makeSetupHook
+{
   name = "cmake-nix-toolchain-hook.sh";
   substitutions = {
     cmakeToolchainPath = "${cmakeToolchain}";

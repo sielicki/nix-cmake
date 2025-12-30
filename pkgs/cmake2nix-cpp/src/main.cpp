@@ -1,4 +1,5 @@
 #include "cmake2nix.hpp"
+
 #include <CLI/CLI.hpp>
 #include <fmt/core.h>
 #include <iostream>
@@ -25,34 +26,28 @@ int main(int argc, char** argv) {
     app.add_flag("-v,--verbose", config.verbose, "Verbose output");
 
     // Subcommands
-    auto* discover_cmd = app.add_subcommand("discover",
-        "Discover dependencies by running CMake");
+    auto* discover_cmd = app.add_subcommand("discover", "Discover dependencies by running CMake");
     discover_cmd->callback([&]() { commands::discover(config); });
 
-    auto* prefetch_cmd = app.add_subcommand("prefetch",
-        "Prefetch hashes for dependencies in lock file");
+    auto* prefetch_cmd =
+        app.add_subcommand("prefetch", "Prefetch hashes for dependencies in lock file");
     prefetch_cmd->callback([&]() { commands::prefetch(config); });
 
-    auto* generate_cmd = app.add_subcommand("generate",
-        "Generate Nix expressions from lock file");
+    auto* generate_cmd = app.add_subcommand("generate", "Generate Nix expressions from lock file");
     generate_cmd->callback([&]() { commands::generate(config); });
 
-    auto* lock_cmd = app.add_subcommand("lock",
-        "Update lock file (discover + prefetch)");
+    auto* lock_cmd = app.add_subcommand("lock", "Update lock file (discover + prefetch)");
     lock_cmd->callback([&]() { commands::lock(config); });
 
-    auto* init_cmd = app.add_subcommand("init",
-        "Scaffold a new nix-cmake project");
+    auto* init_cmd = app.add_subcommand("init", "Scaffold a new nix-cmake project");
     std::string init_dir = ".";
     init_cmd->add_option("directory", init_dir, "Project directory");
     init_cmd->callback([&]() { commands::init(init_dir); });
 
-    auto* shell_cmd = app.add_subcommand("shell",
-        "Enter development shell");
+    auto* shell_cmd = app.add_subcommand("shell", "Enter development shell");
     shell_cmd->callback([&]() { commands::shell(config); });
 
-    auto* build_cmd = app.add_subcommand("build",
-        "Build the project");
+    auto* build_cmd = app.add_subcommand("build", "Build the project");
     build_cmd->callback([&]() { commands::build(config); });
 
     // Default command (no subcommand): full workflow

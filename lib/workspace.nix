@@ -5,15 +5,15 @@ let
     discoverDependencies runs a guest configuration of the CMake project
     to extract File API replies and Nix-CMake discovery logs.
   */
-  discoverDependencies = { 
-    src, 
-    cmake ? (pkgs.cmakeMinimal or pkgs.cmake), 
-    cmakeFlags ? [], 
-    nativeBuildInputs ? [],
-    cmakeToolchainFile ? (pkgs.callPackage ../pkgs/cmake-toolchain-hook/cmake-toolchain.nix {} pkgs.stdenv),
-    cmakeDependencyHookFile ? ../pkgs/cmake-dependency-hook/cmakeBuildHook.cmake,
-    recursive ? false
-  }:
+  discoverDependencies =
+    { src
+    , cmake ? (pkgs.cmakeMinimal or pkgs.cmake)
+    , cmakeFlags ? [ ]
+    , nativeBuildInputs ? [ ]
+    , cmakeToolchainFile ? (pkgs.callPackage ../pkgs/cmake-toolchain-hook/cmake-toolchain.nix { } pkgs.stdenv)
+    , cmakeDependencyHookFile ? ../pkgs/cmake-dependency-hook/cmakeBuildHook.cmake
+    , recursive ? false
+    }:
     let
       # Setup File API query
       query = builtins.toFile "query.json" (builtins.toJSON {
@@ -31,7 +31,7 @@ let
         inherit src;
 
         nativeBuildInputs = [ cmake pkgs.git pkgs.cacert pkgs.ninja ] ++ nativeBuildInputs;
-        
+
         dontBuild = true;
         dontInstall = true;
         dontUseNixCMakeSetup = true;
@@ -64,7 +64,8 @@ let
 
         SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
       };
-    in drv;
+    in
+    drv;
 
   recursiveDiscover = { src, outputHash, outputHashAlgo ? "sha256", ... } @ args:
     (discoverDependencies (args // { recursive = true; })).overrideAttrs (old: {
@@ -72,7 +73,7 @@ let
       outputHashMode = "recursive";
     });
 
-  readJSON = path: 
+  readJSON = path:
     let content = builtins.readFile path;
     in builtins.fromJSON (builtins.unsafeDiscardStringContext content);
 
@@ -81,66 +82,82 @@ let
       replyDir = "${configured}/reply";
       indexFiles = builtins.attrNames (builtins.readDir replyDir);
       indexFile = lib.findFirst (f: lib.hasPrefix "index-" f) null indexFiles;
-      
-      index = if indexFile == null then null 
-              else readJSON "${replyDir}/${indexFile}";
 
-      codemodelObj = if (index == null || !builtins.hasAttr "objects" index) then null 
-                     else lib.findFirst (o: o.kind == "codemodel") null index.objects;
+      index =
+        if indexFile == null then null
+        else readJSON "${replyDir}/${indexFile}";
 
-      codemodelRelPath = if codemodelObj == null then null 
-                         else codemodelObj.jsonFile;
+      codemodelObj =
+        if (index == null || !builtins.hasAttr "objects" index) then null
+        else lib.findFirst (o: o.kind == "codemodel") null index.objects;
 
-      codemodel = if codemodelRelPath == null then null
-                  else readJSON "${replyDir}/${codemodelRelPath}";
+      codemodelRelPath =
+        if codemodelObj == null then null
+        else codemodelObj.jsonFile;
 
-      targets = if (codemodel == null || builtins.length codemodel.configurations == 0) then []
-                else (builtins.elemAt codemodel.configurations 0).targets;
+      codemodel =
+        if codemodelRelPath == null then null
+        else readJSON "${replyDir}/${codemodelRelPath}";
 
-    in map (t: 
-      let 
-        info = readJSON "${replyDir}/${t.jsonFile}";
-      in {
-        inherit (t) name id;
-        inherit (info) type;
-        imported = info.imported or false;
-      }
-    ) targets;
+      targets =
+        if (codemodel == null || builtins.length codemodel.configurations == 0) then [ ]
+        else (builtins.elemAt codemodel.configurations 0).targets;
+
+    in
+    map
+      (t:
+        let
+          info = readJSON "${replyDir}/${t.jsonFile}";
+        in
+        {
+          inherit (t) name id;
+          inherit (info) type;
+          imported = info.imported or false;
+        }
+      )
+      targets;
 
   extractFromDiscoveryLog = configured:
     let
       logPath = "${configured}/discovery-log.json";
       content = if builtins.pathExists logPath then builtins.readFile logPath else "";
       lines = lib.filter (l: l != "") (lib.splitString "\n" content);
-    in map (l: builtins.fromJSON (builtins.unsafeDiscardStringContext l)) lines;
+    in
+    map (l: builtins.fromJSON (builtins.unsafeDiscardStringContext l)) lines;
 
-  mkProjectOverlay = { lock, fetchers ? {} }: 
-    self: super: 
-    let
-      # Use the provided fetchers, or fall back to the lock file's fetcher specs
-      projectPackages = lib.mapAttrs (name: dep: 
-        let 
-          # 1. Try explicit fetcher override
-          # 2. Try to instantiate the fetcher from the lock file
-          # 3. Fall back to null if no source is available
-          src = if builtins.hasAttr name fetchers then fetchers.${name} 
+  mkProjectOverlay = { lock, fetchers ? { } }:
+    self: super:
+      let
+        # Use the provided fetchers, or fall back to the lock file's fetcher specs
+        projectPackages = lib.mapAttrs
+          (name: dep:
+            let
+              # 1. Try explicit fetcher override
+              # 2. Try to instantiate the fetcher from the lock file
+              # 3. Fall back to null if no source is available
+              src =
+                if builtins.hasAttr name fetchers then fetchers.${name}
                 else if dep ? method && dep ? args then (pkgs.${dep.method} dep.args)
                 else null;
-        in {
-          inherit name src;
-          pkg = if src == null then null else pkgs.stdenv.mkDerivation {
-             name = "${name}-${dep.version or "unknown"}";
-             inherit src;
-             # Add target metadata for later mapping
-             passthru = {
-               cmakeTargets = dep.metadata.cmakeTargets or [ name ];
-             };
-          };
-        }
-      ) (lock.dependencies or {});
-    in {
-      cmakeProject = projectPackages;
-    };
+            in
+            {
+              inherit name src;
+              pkg = if src == null then null else
+              pkgs.stdenv.mkDerivation {
+                name = "${name}-${dep.version or "unknown"}";
+                inherit src;
+                # Add target metadata for later mapping
+                passthru = {
+                  cmakeTargets = dep.metadata.cmakeTargets or [ name ];
+                };
+              };
+            }
+          )
+          (lock.dependencies or { });
+      in
+      {
+        cmakeProject = projectPackages;
+      };
 
   loadWorkspace = { workspaceRoot }:
     let
@@ -160,21 +177,23 @@ let
           let
             cpmParser = import ./cpm-lock-parser.nix { inherit lib; };
           in
-            cpmParser.loadCPMPackageLock cpmLockPath
+          cpmParser.loadCPMPackageLock cpmLockPath
         else
-          { version = "1.0"; dependencies = {}; };
+          { version = "1.0"; dependencies = { }; };
 
       dependency = import ./dependency.nix { inherit lib; };
 
       # Auto-generate all fetchers from the lock file
       # No manual specification needed!
-      fetchers = lib.mapAttrs (name: dep:
-        if dep ? method && dep ? args then
+      fetchers = lib.mapAttrs
+        (name: dep:
+          if dep ? method && dep ? args then
           # Instantiate the fetcher from the lock file
-          pkgs.${dep.method} dep.args
-        else
-          null
-      ) (lock.dependencies or {});
+            pkgs.${dep.method} dep.args
+          else
+            null
+        )
+        (lock.dependencies or { });
 
       # Filter out null fetchers
       validFetchers = lib.filterAttrs (n: v: v != null) fetchers;
@@ -192,9 +211,9 @@ let
         # Dependency groups (similar to uv2nix's workspace.deps.all, workspace.deps.default)
         deps = {
           # All dependencies from lock file
-          all = builtins.attrNames (lock.dependencies or {});
+          all = builtins.attrNames (lock.dependencies or { });
           # Just the direct dependencies (could parse CMakeLists.txt for this)
-          default = builtins.attrNames (lock.dependencies or {});
+          default = builtins.attrNames (lock.dependencies or { });
         };
 
         # Build the package with lock file dependencies automatically applied
@@ -209,7 +228,7 @@ let
           });
 
         # Development shell with all dependencies available
-        mkShell = { nativeBuildInputs ? [], ... } @ args:
+        mkShell = { nativeBuildInputs ? [ ], ... } @ args:
           let
             # Create a derivation with all dependencies built
             depsEnv = pkgs.stdenv.mkDerivation {
@@ -236,15 +255,17 @@ let
             '';
           });
       };
-    in workspace;
+    in
+    workspace;
 
   generateLock = configured:
     let
       dependency = import ./dependency.nix { inherit lib; };
       logPath = "${configured}/discovery-log.json";
     in
-      dependency.generateLockFromLog logPath;
+    dependency.generateLockFromLog logPath;
 
-in {
+in
+{
   inherit discoverDependencies recursiveDiscover extractFromCodemodel extractFromDiscoveryLog mkProjectOverlay loadWorkspace generateLock;
 }

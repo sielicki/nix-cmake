@@ -29,7 +29,7 @@
                 };
                 cmakeFlags = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
-                  default = [];
+                  default = [ ];
                 };
               };
             });
@@ -41,7 +41,8 @@
               workspace = nix-cmake.workspace pkgs {
                 inherit (config.cmake-project) src lockFile;
               };
-            in {
+            in
+            {
               packages = {
                 ${config.cmake-project.pname} = workspace.buildPackage {
                   inherit (config.cmake-project) pname version cmakeFlags;
@@ -49,7 +50,7 @@
                 default = config.packages.${config.cmake-project.pname};
               };
 
-              devShells.default = workspace.mkShell {};
+              devShells.default = workspace.mkShell { };
 
               checks.discovery = workspace.discoverDependencies {
                 inherit (config.cmake-project) src cmakeFlags;

@@ -8,7 +8,7 @@ stdenv.mkDerivation rec {
     owner = "rapidsai";
     repo = "rapids-cmake";
     rev = "v${version}";
-    hash = "sha256-abl8pT81osBMcxJM/wtB8oBu1DK/lz5k/O1bzqCLPvY="; 
+    hash = "sha256-abl8pT81osBMcxJM/wtB8oBu1DK/lz5k/O1bzqCLPvY=";
   };
 
   # Inject our hook into the core configuration so it loads automatically

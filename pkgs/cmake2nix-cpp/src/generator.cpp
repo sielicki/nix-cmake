@@ -1,8 +1,9 @@
 #include "cmake2nix.hpp"
+
 #include <fmt/format.h>
 #include <fstream>
-#include <sstream>
 #include <set>
+#include <sstream>
 
 namespace cmake2nix::generator {
 
@@ -84,7 +85,8 @@ rec {{
       "export FETCHCONTENT_SOURCE_DIR_${{lib.toUpper name}}=${{dep.src}}"
     ) deps);
 }}
-)", nix_cmake_path);
+)",
+                       nix_cmake_path);
 }
 
 std::string generate_default_nix(const ProjectInfo& info) {
@@ -127,7 +129,8 @@ rec {{
     shellHook = cmakeEnv.mkFetchContentEnv cmakeDeps;
   }};
 }}
-)", info.pname, info.version);
+)",
+                       info.pname, info.version);
 }
 
 void write_all(const Config& config, const LockFile& lock, const ProjectInfo& info) {

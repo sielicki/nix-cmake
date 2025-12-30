@@ -1,40 +1,41 @@
 #include "cmake2nix.hpp"
-#include <fmt/core.h>
+
 #include <array>
+#include <fmt/core.h>
 #include <memory>
 #include <regex>
 
 namespace cmake2nix::prefetcher {
 
 namespace {
-    std::string exec_command(const std::string& cmd) {
-        std::array<char, 128> buffer;
-        std::string result;
-        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+std::string exec_command(const std::string& cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
 
-        if (!pipe) {
-            throw std::runtime_error("popen() failed!");
-        }
-
-        while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-            result += buffer.data();
-        }
-
-        return result;
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
     }
 
-    std::string extract_hash(const std::string& output) {
-        // Look for sha256- prefixed hash
-        std::regex hash_regex(R"(sha256-[A-Za-z0-9+/=]+)");
-        std::smatch match;
-
-        if (std::regex_search(output, match, hash_regex)) {
-            return match[0].str();
-        }
-
-        return "";
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
     }
+
+    return result;
 }
+
+std::string extract_hash(const std::string& output) {
+    // Look for sha256- prefixed hash
+    std::regex hash_regex(R"(sha256-[A-Za-z0-9+/=]+)");
+    std::smatch match;
+
+    if (std::regex_search(output, match, hash_regex)) {
+        return match[0].str();
+    }
+
+    return "";
+}
+} // namespace
 
 void prefetch_all(LockFile& lock, bool verbose) {
     fmt::print("cmake2nix: Prefetching {} dependencies...\n", lock.dependencies.size());
@@ -86,8 +87,7 @@ void prefetch_all(LockFile& lock, bool verbose) {
 
 std::string prefetch_github(const std::string& owner, const std::string& repo,
                             const std::string& rev) {
-    std::string cmd = fmt::format("nix-prefetch-github {} {} --rev {} 2>&1",
-                                 owner, repo, rev);
+    std::string cmd = fmt::format("nix-prefetch-github {} {} --rev {} 2>&1", owner, repo, rev);
     std::string output = exec_command(cmd);
 
     // nix-prefetch-github outputs JSON

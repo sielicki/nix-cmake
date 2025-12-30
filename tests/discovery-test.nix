@@ -15,7 +15,7 @@ stdenv.mkDerivation {
     cmake
     cmakeDependencyHook
     ninja
-    git  # Needed for FetchContent to actually attempt to download
+    git # Needed for FetchContent to actually attempt to download
   ];
 
   # Don't provide any buildInputs - we want to see what gets discovered

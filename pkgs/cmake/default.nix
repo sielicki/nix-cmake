@@ -1,39 +1,38 @@
-{
-  installShellFiles,
-  buildPackages,
-  bzip2,
-  callPackage,
-  cmakeDependencyHook,
-  cmakeToolchainHook,
-  curl,
-  cmakeMinimal,
-  ninja,
-  expat,
-  fetchFromGitHub,
-  fetchurl,
-  gitUpdater,
-  jsoncpp,
-  lib,
-  libarchive,
-  libuv,
-  ncurses,
-  nghttp2,
-  openssl,
-  ps,
-#swift,
-  sysctl,
-  replaceVars,
-  rhash,
-  sphinx,
-  stdenv,
-  texinfo,
-  writeText,
-  writeTextFile,
-  xz,
-  zlib,
-  zstd,
-  libsForQt5,
-  buildDocs ? true
+{ installShellFiles
+, buildPackages
+, bzip2
+, callPackage
+, cmakeDependencyHook
+, cmakeToolchainHook
+, curl
+, cmakeMinimal
+, ninja
+, expat
+, fetchFromGitHub
+, fetchurl
+, gitUpdater
+, jsoncpp
+, lib
+, libarchive
+, libuv
+, ncurses
+, nghttp2
+, openssl
+, ps
+, #swift,
+  sysctl
+, replaceVars
+, rhash
+, sphinx
+, stdenv
+, texinfo
+, writeText
+, writeTextFile
+, xz
+, zlib
+, zstd
+, libsForQt5
+, buildDocs ? true
   #cppdap,
 }:
 let
@@ -59,21 +58,21 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = setupHooks ++ [ installShellFiles ];
 
   outputs =
-          [ "dev" "out" "doc" "man" ];
-      #    [ "out" ];
-      #++ lib.optionals buildDocs [
-      #  "info"
-      #  "man"
-      #];
+    [ "dev" "out" "doc" "man" ];
+  #    [ "out" ];
+  #++ lib.optionals buildDocs [
+  #  "info"
+  #  "man"
+  #];
   separateDebugInfo = true;
   setOutputFlags = false;
 
   buildInputs = [
     ps
-    openssl 
+    openssl
     # unpackaged:
     #   cppdap
-    
+
 
     # recursive dependency:
     #jsoncpp
@@ -104,7 +103,7 @@ stdenv.mkDerivation rec {
   ];
 
   configureFlags = [
-      "-DCMAKE_USE_OPENSSL=ON"
+    "-DCMAKE_USE_OPENSSL=ON"
   ];
 
   setupHooks = [
@@ -115,16 +114,16 @@ stdenv.mkDerivation rec {
   #dontUseNixCMakeSetup = true;
   enableParallelBuilding = true;
 
-    #postInstall = ''
-    #'';
-  
+  #postInstall = ''
+  #'';
+
   passthru.updateScript = gitUpdater {
     url = "https://gitlab.kitware.com/cmake/cmake.git";
     rev-prefix = "v";
     ignoredVersions = "-"; # -rc1 and friends
   };
 
-    meta = {
+  meta = {
     homepage = "https://cmake.org/";
     description = "Cross-platform, open-source build system generator";
     longDescription = ''

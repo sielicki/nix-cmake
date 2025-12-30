@@ -4,11 +4,11 @@ stdenv:
 let
   inherit (stdenv) hostPlatform buildPlatform targetPlatform cc;
   inherit (stdenv.cc) bintools;
-  
+
   launchers = import ./../cmake-compiler-launchers { inherit lib writeShellScript stdenv; };
-  
+
   isCross = hostPlatform != buildPlatform;
-  
+
   #ccPath = "${lib.meta.getExe cc.cc}";
   #cxxPath = "${lib.meta.getExe cc.cc}++";
   ccPath = "${cc.cc}/bin/${if cc.isClang then "clang" else "gcc"}";
@@ -19,7 +19,7 @@ let
   #arPath = "${cc.cc.libllvm}/bin/llvm-ar";
   #ranlibPath = "${cc.cc.libllvm}/bin/llvm-ranlib";
   #stripPath = "${cc.cc.libllvm}/bin/llvm-strip";
-  
+
   cmakeSystemNameFor = platform: {
     "linux" = "Linux";
     "darwin" = "Darwin";
@@ -28,7 +28,7 @@ let
     "openbsd" = "OpenBSD";
     "netbsd" = "NetBSD";
   }.${platform.parsed.kernel.name} or "Generic";
-  
+
   cmakeSystemProcessorFor = platform: {
     "x86_64" = "x86_64";
     "i686" = "i686";
@@ -39,14 +39,15 @@ let
 
   libcLib = lib.getLib stdenv.cc.libc;
   libcDev = lib.getDev stdenv.cc.libc;
-  
-in writeTextFile {
+
+in
+writeTextFile {
   name = "cmake-toolchain-${stdenv.targetPlatform.config}.cmake";
-    #set(CMAKE_C_COMPILER_LAUNCHER "${launchers.cCompilerLauncher}")
-    #set(CMAKE_CXX_COMPILER_LAUNCHER "${launchers.cxxCompilerLauncher}")
-    
-    #set(CMAKE_C_LINKER_LAUNCHER "${launchers.cLinkerLauncher}")
-    #set(CMAKE_CXX_LINKER_LAUNCHER "${launchers.cxxLinkerLauncher}")
+  #set(CMAKE_C_COMPILER_LAUNCHER "${launchers.cCompilerLauncher}")
+  #set(CMAKE_CXX_COMPILER_LAUNCHER "${launchers.cxxCompilerLauncher}")
+
+  #set(CMAKE_C_LINKER_LAUNCHER "${launchers.cLinkerLauncher}")
+  #set(CMAKE_CXX_LINKER_LAUNCHER "${launchers.cxxLinkerLauncher}")
   text = ''
     # Nix-generated CMake toolchain file for ${stdenv.targetPlatform.config}
     # Generated from stdenv with:
@@ -150,8 +151,8 @@ in writeTextFile {
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
       # Use relative paths in debug info for reproducibility
       add_compile_options(
-        $<$<CONFIG:Debug>:-fdebug-prefix-map=\${CMAKE_SOURCE_DIR}=.>
-        $<$<CONFIG:RelWithDebInfo>:-fdebug-prefix-map=\${CMAKE_SOURCE_DIR}=.>
+        $<$<CONFIG:Debug>:-fdebug-prefix-map=$''${CMAKE_SOURCE_DIR}=.>
+        $<$<CONFIG:RelWithDebInfo>:-fdebug-prefix-map=$''${CMAKE_SOURCE_DIR}=.>
       )
 
       # Linker flags for reproducibility

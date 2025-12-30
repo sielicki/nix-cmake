@@ -108,7 +108,7 @@
       fi
     '';
   };
-  
+
   # Utility script for debugging CMake dependency resolution
   debugScript = writeShellScript "cmake-debug-deps" ''
     echo "=== CMake Dependency Debug ==="

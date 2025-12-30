@@ -24,14 +24,14 @@ let
       # Extract all matches
       matches = builtins.match pattern content;
     in
-      if matches != null then
-        {
-          name = builtins.elemAt matches 0;
-          repository = builtins.elemAt matches 1;
-          version = builtins.elemAt matches 2;
-        }
-      else
-        null;
+    if matches != null then
+      {
+        name = builtins.elemAt matches 0;
+        repository = builtins.elemAt matches 1;
+        version = builtins.elemAt matches 2;
+      }
+    else
+      null;
 
   # Parse all FetchContent declarations from a CMakeLists.txt file
   parseCMakeListsFile = path:
@@ -43,7 +43,7 @@ let
       declarations = lib.lists.filter (decl: decl != null)
         (map parseFetchContentDeclare (lib.splitString "FetchContent_Declare" content));
     in
-      declarations;
+    declarations;
 
 in
 {

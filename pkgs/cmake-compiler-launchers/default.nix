@@ -3,26 +3,28 @@
 let
   inherit (stdenv) hostPlatform;
   inherit (stdenv.cc) libc;
-  
+
   nixIncludePaths = [
     "${lib.getDev libc}/include"
   ];
-  
+
   nixLibraryPaths = [
     "${lib.getLib libc}/lib"
   ];
-  
-  platformFlags = lib.optionalAttrs hostPlatform.isDarwin {
-    commonLinkerFlags = [
-      "-Wl,-headerpad_max_install_names"
-    ];
-  } // lib.optionalAttrs hostPlatform.isLinux {
+
+  platformFlags = lib.optionalAttrs hostPlatform.isDarwin
+    {
+      commonLinkerFlags = [
+        "-Wl,-headerpad_max_install_names"
+      ];
+    } // lib.optionalAttrs hostPlatform.isLinux {
     commonLinkerFlags = [
       "-Wl,--enable-new-dtags"
     ];
   };
 
-in {
+in
+{
   cCompilerLauncher = writeShellScript "nix-gcc-launcher" ''
     set -euo pipefail
     compiler="$1"
@@ -47,7 +49,7 @@ in {
     
     exec "$compiler" "''${nix_flags[@]}" "$@"
   '';
-  
+
   cxxCompilerLauncher = writeShellScript "nix-g++-launcher" ''
     set -euo pipefail
     compiler="$1"
@@ -72,7 +74,7 @@ in {
     
     exec "$compiler" "''${nix_flags[@]}" "$@"
   '';
-  
+
   cLinkerLauncher = writeShellScript "nix-ld-c-launcher" ''
     set -euo pipefail
     compiler="$1" 
@@ -98,7 +100,7 @@ in {
     
     exec "$compiler" "''${nix_flags[@]}" "$@"
   '';
-  
+
   cxxLinkerLauncher = writeShellScript "nix-ld-cxx-launcher" ''
     set -euo pipefail
     compiler="$1"
