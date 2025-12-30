@@ -54,14 +54,19 @@ let
     in pkgs.stdenv.mkDerivation (drvArgs // fetchContentEnv // {
       inherit pname version src;
 
-      nativeBuildInputs = (args.nativeBuildInputs or []) ++ [ 
+      # CPM.cmake configuration: prefer local packages (find_package) before downloading
+      CPM_USE_LOCAL_PACKAGES = "ON";
+
+      nativeBuildInputs = (args.nativeBuildInputs or []) ++ [
         cmake pkgs.ninja
       ] ++ lib.optional (cmakeToolchainHook != null) cmakeToolchainHook
         ++ lib.optional (cmakeDependencyHook != null) cmakeDependencyHook;
 
-      cmakeFlags = (args.cmakeFlags or []) ++ cmakeFlags
+      cmakeFlags = (args.cmakeFlags or [])
+        ++ cmakeFlags
         ++ [ "-GNinja" ]
-        ++ lib.optional (cmakeArtifacts != null) "-DCMAKE_PREFIX_PATH=${cmakeArtifacts}";
+        ++ [ "-DCPM_USE_LOCAL_PACKAGES=ON" ]  # Try find_package before downloading
+        ++ (lib.optional (cmakeArtifacts != null) "-DCMAKE_PREFIX_PATH=${cmakeArtifacts}");
 
       # If we have artifacts, we might want to copy them in or use a specific build dir
       preConfigure = (args.preConfigure or "") + lib.optionalString (cmakeArtifacts != null) ''

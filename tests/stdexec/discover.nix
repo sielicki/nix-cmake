@@ -18,9 +18,6 @@ let
   };
 in
 workspace.discoverDependencies {
-  pname = "stdexec-discovery";
-  version = "0.1.0";
-
   src = stdexecSrc;
 
   nativeBuildInputs = [ rapids-cmake pkgs.git ];

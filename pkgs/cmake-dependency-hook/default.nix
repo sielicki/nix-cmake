@@ -39,8 +39,15 @@
           cmakeDir=''${cmakeDir:-.}
         fi
         
+        # Convert cmakeFlags from space-separated string to array
+        # Nix passes lists as space-separated strings in environment variables
+        local cmakeFlagsArray=()
+        if [[ -n "''${cmakeFlags:-}" ]]; then
+          read -ra cmakeFlagsArray <<< "$cmakeFlags"
+        fi
+
         local cmakeFlags=(
-          "''${cmakeFlags[@]:-}"
+          "''${cmakeFlagsArray[@]}"
           "-DCMAKE_BUILD_TYPE=''${cmakeBuildType:-Release}"
         )
 
