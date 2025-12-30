@@ -1,33 +1,71 @@
-{ lib, stdenv, makeWrapper, nix, coreutils, nix-cmake-lib }:
+{ lib
+, pkgs
+, cmake
+, ninja
+, cmakeDependencyHook
+, nix
+, nix-prefetch-github
+, git
+, makeBinaryWrapper
+}:
 
-stdenv.mkDerivation {
+let
+  # Import nix-cmake library
+  nix-cmake = import ../../lib { inherit lib; };
+
+  # Load workspace with cmake-lock.json
+  workspace = (nix-cmake.workspace pkgs).loadWorkspace {
+    workspaceRoot = ./.;
+  };
+
+in
+
+# Use workspace.buildPackage for automatic dependency injection
+workspace.buildPackage {
   pname = "cmake2nix";
-  version = "0.1.0";
+  version = "0.2.0";
 
-  src = ./.;
+  nativeBuildInputs = [
+    cmake
+    ninja
+    cmakeDependencyHook
+    makeBinaryWrapper
+  ];
 
-  nativeBuildInputs = [ makeWrapper ];
+  # Runtime dependencies that cmake2nix shells out to
+  buildInputs = [
+    nix
+    nix-prefetch-github
+    git
+  ];
 
-  installPhase = ''
-    mkdir -p $out/bin
-    cp cmake2nix.sh $out/bin/cmake2nix
-    chmod +x $out/bin/cmake2nix
+  cmakeFlags = [
+    "-GNinja"
+    "-DCMAKE_BUILD_TYPE=Release"
+    "-DCMAKE_INSTALL_PREFIX=${placeholder "out"}"
+  ];
 
-    # Substitute the library path
-    # We point to the local copy we're about to make
-    substituteInPlace $out/bin/cmake2nix \
-      --replace-quiet "@nix_cmake_lib@" "$out/share/nix-cmake/lib"
-
-    mkdir -p $out/share/nix-cmake
-    cp -r ${nix-cmake-lib} $out/share/nix-cmake/lib
-
+  # Make nix commands available at runtime
+  postInstall = ''
     wrapProgram $out/bin/cmake2nix \
-      --prefix PATH : ${lib.makeBinPath [ nix coreutils ]}
+      --prefix PATH : ${lib.makeBinPath [ nix nix-prefetch-github git ]}
   '';
 
   meta = with lib; {
-    description = "A CLI for managing Nix-CMake projects";
+    description = "Generate Nix expressions for CMake projects (C++23 implementation)";
+    longDescription = ''
+      cmake2nix is a tool for managing CMake-based C++ projects with Nix.
+      It discovers dependencies via CMake's FetchContent and CPM, generates
+      lock files with hashes, and produces standalone Nix expressions.
+
+      This version is written in C++23 using CMake and CPM, demonstrating
+      a meta-circular implementation where cmake2nix can generate its own
+      lock file and Nix expressions.
+    '';
+    homepage = "https://github.com/sielicki/nix-cmake";
     license = licenses.asl20;
     maintainers = [ ];
+    mainProgram = "cmake2nix";
+    platforms = platforms.unix;
   };
 }
