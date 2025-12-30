@@ -7,4 +7,5 @@
   builders = pkgs: import ./builders.nix { inherit lib pkgs; };
   toolchains = pkgs: import ./toolchains { inherit lib pkgs; };
   cps = import ./cps.nix { inherit lib; };
+  generators = import ./generators.nix { inherit lib; };
 }

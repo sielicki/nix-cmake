@@ -137,6 +137,32 @@ in writeTextFile {
     # Build Configuration Defaults
     # ============================================================================
     set(BUILD_SHARED_LIBS ${if stdenv.hostPlatform.isStatic then "OFF" else "ON"} CACHE BOOL "Build shared libraries by default")
+
+    # ============================================================================
+    # Reproducible Builds
+    # ============================================================================
+    # Respect SOURCE_DATE_EPOCH for reproducible builds
+    if(DEFINED ENV{SOURCE_DATE_EPOCH})
+      set(SOURCE_DATE_EPOCH $ENV{SOURCE_DATE_EPOCH} CACHE STRING "Timestamp for reproducible builds")
+    endif()
+
+    # Add compiler flags for reproducible builds
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      # Use relative paths in debug info for reproducibility
+      add_compile_options(
+        $<$<CONFIG:Debug>:-fdebug-prefix-map=\${CMAKE_SOURCE_DIR}=.>
+        $<$<CONFIG:RelWithDebInfo>:-fdebug-prefix-map=\${CMAKE_SOURCE_DIR}=.>
+      )
+
+      # Linker flags for reproducibility
+      ${lib.optionalString hostPlatform.isLinux ''
+      add_link_options(-Wl,--build-id=none)  # Remove build-id which varies
+      ''}
+      ${lib.optionalString hostPlatform.isDarwin ''
+      add_link_options(-Wl,-no_uuid)  # Remove UUID on macOS
+      ''}
+    endif()
+
     #include(GNUInstallDirs)
     
     # ============================================================================

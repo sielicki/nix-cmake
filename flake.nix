@@ -26,8 +26,12 @@
           };
           # Use nixpkgs' fmt which has proper CMake config files
           fmt = pkgs.fmt;
-          cmake2nix = pkgs.callPackage ./pkgs/cmake2nix { 
+          cmake2nix = pkgs.callPackage ./pkgs/cmake2nix {
             nix-cmake-lib = ./lib;
+          };
+          cmake2nix-cpp = pkgs.callPackage ./pkgs/cmake2nix-cpp {
+            cmake = self'.packages.cmakeMinimal;
+            cmakeDependencyHook = self'.packages.cmakeDependencyHook;
           };
           rapids-cmake = pkgs.callPackage ./pkgs/rapids-cmake { };
           default = self'.packages.cmake;

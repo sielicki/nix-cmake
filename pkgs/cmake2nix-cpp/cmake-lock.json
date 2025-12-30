@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "dependencies": {
+    "CLI11": {
+      "name": "CLI11",
+      "version": "2.6.1",
+      "method": "fetchFromGitHub",
+      "args": {
+        "owner": "CLIUtils",
+        "repo": "CLI11",
+        "rev": "v2.6.1",
+        "hash": "sha256-q5q6TgSex0xjdWFf/4e6dhrN0qWPDjIgWBpdkCTlLys="
+      },
+      "metadata": {
+        "gitRepository": "https://github.com/CLIUtils/CLI11.git",
+        "gitTag": "v2.6.1"
+      }
+    },
+    "nlohmann_json": {
+      "name": "nlohmann_json",
+      "version": "3.12.0",
+      "method": "fetchFromGitHub",
+      "args": {
+        "owner": "nlohmann",
+        "repo": "json",
+        "rev": "v3.12.0",
+        "hash": "sha256-cECvDOLxgX7Q9R3IE86Hj9JJUxraDQvhoyPDF03B2CY="
+      },
+      "metadata": {
+        "gitRepository": "https://github.com/nlohmann/json.git",
+        "gitTag": "v3.12.0"
+      }
+    },
+    "fmt": {
+      "name": "fmt",
+      "version": "12.1.0",
+      "method": "fetchFromGitHub",
+      "args": {
+        "owner": "fmtlib",
+        "repo": "fmt",
+        "rev": "12.1.0",
+        "hash": "sha256-ZmI1Dv0ZabPlxa02OpERI47jp7zFfjpeWCy1WyuPYZ0="
+      },
+      "metadata": {
+        "gitRepository": "https://github.com/fmtlib/fmt.git",
+        "gitTag": "12.1.0"
+      }
+    }
+  }
+}
