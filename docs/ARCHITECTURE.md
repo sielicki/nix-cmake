@@ -134,6 +134,49 @@ A primary goal of `nix-cmake` is to show that a standard, unpatched Kitware CMak
 - We use an in-tree `cmakeMinimal` (CMake 4.2.1) without the typical Nixpkgs patches.
 - We rely on declarative toolchain files and dependency providers instead of hardcoding Nix-specific paths into the CMake source code.
 
+### Avoiding Impure System Paths
+
+Instead of patching hundreds of lines in CMake's Find modules (as nixpkgs does), we use CMake's built-in `CMAKE_SYSTEM_IGNORE_PREFIX_PATH` variable to ignore impure system locations:
+
+```cmake
+CMAKE_SYSTEM_IGNORE_PREFIX_PATH=/usr;/usr/local;/opt;/Library;/System/Library;...
+```
+
+This tells CMake's `find_package()`, `find_library()`, `find_file()`, and `find_path()` commands to skip these directories. Benefits:
+
+- **Zero patches**: Works with stock Kitware CMake
+- **Maintainable**: No need to update patches for each CMake release
+- **Hermetic**: Prevents accidental usage of system libraries
+- **Explicit**: Clear declaration of what we're ignoring
+
+### Runtime Tool Dependencies
+
+Instead of patching CMake source to hardcode tool paths (as nixpkgs does), we use `wrapProgram` to ensure runtime dependencies are available in `PATH`:
+
+```nix
+postInstall = ''
+  for prog in cmake ctest cpack; do
+    wrapProgram "$out/bin/$prog" \
+      --prefix PATH : ${lib.makeBinPath ([
+        git ps sysctl
+      ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
+        darwin.DarwinTools    # sw_vers
+        darwin.system_cmds    # vm_stat
+      ])}
+  done
+'';
+```
+
+This ensures CMake can find tools like `git`, `ps`, `sysctl`, and macOS-specific tools without source patches.
+
+### Other Impurities Handled via Variables
+
+We also handle other impurities using CMake's built-in configuration:
+- `CURL_CA_BUNDLE=${NIX_SSL_CERT_FILE}` - SSL certificates
+- `CPM_USE_LOCAL_PACKAGES=ON` - CPM.cmake integration
+
+See [ZERO-PATCH.md](./ZERO-PATCH.md) for detailed comparison with nixpkgs' patching approach.
+
 ## Data Flow: Discovery Phase
 
 ```mermaid

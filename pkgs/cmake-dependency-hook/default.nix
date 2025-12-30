@@ -62,12 +62,38 @@
            cmakeFlags+=("-DCMAKE_PREFIX_PATH=''${CMAKE_PREFIX_PATH}")
         fi
 
+        # Ignore impure system paths (zero-patch philosophy)
+        # Instead of patching CMake modules, we use CMAKE_SYSTEM_IGNORE_PREFIX_PATH
+        # to tell CMake not to search in system locations
+        local ignorePaths=(
+          "/usr"
+          "/usr/local"
+          "/opt"
+          "/Library"
+          "/System/Library"
+          "/opt/local"           # MacPorts
+          "/opt/homebrew"        # Homebrew on Apple Silicon
+          "/sw"                  # Fink
+        )
+        local ignorePathsStr="''${ignorePaths[0]}"
+        for path in "''${ignorePaths[@]:1}"; do
+          ignorePathsStr="$ignorePathsStr;$path"
+        done
+        cmakeFlags+=("-DCMAKE_SYSTEM_IGNORE_PREFIX_PATH=$ignorePathsStr")
+
+        # Also set CURL_CA_BUNDLE if cacert is available in buildInputs
+        # This avoids needing to patch curl's CMakeLists.txt
+        if [[ -n "''${NIX_SSL_CERT_FILE:-}" ]]; then
+          cmakeFlags+=("-DCURL_CA_BUNDLE=''${NIX_SSL_CERT_FILE}")
+        fi
+
         echo "CMake configuration:"
         echo "  Source directory: $cmakeDir"
         echo "  Build directory: $PWD"
         echo "  Install prefix: ''${!outputBin:-$out}"
         echo "  Toolchain file: ''${CMAKE_TOOLCHAIN_FILE:-<default>}"
         echo "  Top-level includes: ''${NIX_CMAKE_TOP_LEVEL_INCLUDES:-<not set>}"
+        echo "  Ignored prefixes: $ignorePathsStr"
         echo "  Flags: ''${cmakeFlags[*]}"
 
         # Run CMake

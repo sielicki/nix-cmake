@@ -4,9 +4,11 @@
   callPackage,
   darwin,
   fetchFromGitHub,
+  git,
   gitUpdater,
   lib,
   libidn2,
+  makeBinaryWrapper,
   ninja,
   ps,
   sysctl,
@@ -30,15 +32,16 @@ pkg = stdenv.mkDerivation rec {
   depsBuildBuild = with buildPackages; [ stdenv.cc ninja which ];
 
   # Don't use cmakeDependencyHook during bootstrap - it would interfere
-  # Include ps, sysctl, and sw_vers in nativeBuildInputs for the bootstrap build itself
-  nativeBuildInputs = [ installShellFiles ps sysctl ]
-    ++ lib.optionals stdenv.hostPlatform.isDarwin [ darwin.DarwinTools darwin.system_cmds ];
-
-  # Also propagate these tools to packages that use cmake
-  # This ensures they're available when CMake runs platform detection
-  # This avoids needing to patch CMake source code with hardcoded paths
-  propagatedNativeBuildInputs = [ ps sysctl ]
-    ++ lib.optionals stdenv.hostPlatform.isDarwin [ darwin.DarwinTools darwin.system_cmds ];
+  # Include tools needed for the bootstrap build itself
+  nativeBuildInputs = [
+    installShellFiles
+    makeBinaryWrapper
+    ps
+    sysctl
+  ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
+    darwin.DarwinTools    # sw_vers
+    darwin.system_cmds    # vm_stat
+  ];
 
   outputs = [ "out" ];
   separateDebugInfo = true;
@@ -108,7 +111,26 @@ pkg = stdenv.mkDerivation rec {
   dontUseNixCMakeSetup = true;
   configureScript = "./bootstrap";
   enableParallelBuilding = true;
-  
+
+  # Wrap cmake binaries to ensure runtime dependencies are available
+  # This maintains our zero-patch philosophy by using wrappers instead of patching source
+  postInstall = ''
+    # Wrap cmake and related tools with runtime dependencies in PATH
+    for prog in cmake ctest cpack; do
+      if [ -f "$out/bin/$prog" ]; then
+        wrapProgram "$out/bin/$prog" \
+          --prefix PATH : ${lib.makeBinPath ([
+            git
+            ps
+            sysctl
+          ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
+            darwin.DarwinTools    # sw_vers for macOS version detection
+            darwin.system_cmds    # vm_stat for memory info
+          ])}
+      fi
+    done
+  '';
+
   passthru.updateScript = gitUpdater {
     url = "https://gitlab.kitware.com/cmake/cmake.git";
     rev-prefix = "v";
