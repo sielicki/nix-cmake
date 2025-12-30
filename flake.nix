@@ -92,8 +92,6 @@
         pre-commit.settings = {
           hooks = {
             treefmt.enable = true;
-            nixpkgs-fmt.enable = true;
-            clang-format.enable = true;
           };
         };
 
