@@ -54,8 +54,17 @@
 
         local cmakeFlags=(
           "''${parsedCmakeFlags[@]}"
-          "-DCMAKE_BUILD_TYPE=''${cmakeBuildType:-Release}"
         )
+        # Default to Release, but an explicit user -DCMAKE_BUILD_TYPE
+        # (in cmakeFlags) must win over both the default and the
+        # cmakeBuildType variable.
+        local _hasBuildType=""
+        for _flag in "''${parsedCmakeFlags[@]}"; do
+          case "$_flag" in -DCMAKE_BUILD_TYPE=*) _hasBuildType=1 ;; esac
+        done
+        if [[ -z "$_hasBuildType" ]]; then
+          cmakeFlags+=("-DCMAKE_BUILD_TYPE=''${cmakeBuildType:-Release}")
+        fi
 
         # Install into the Nix output(s) with absolute GNUInstallDirs
         # paths (mirrors nixpkgs' cmake hook). Without these, projects

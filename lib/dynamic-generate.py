@@ -85,10 +85,17 @@ def load_discovery_log(path):
     return deps
 
 
-def load_lock(path):
+def load_lock(path, discovered_count=0):
     if not path:
         return {}
     if not os.path.isfile(path):
+        if discovered_count == 0:
+            print(
+                f"nix-cmake dynamic: note: no lock file at {path}; "
+                "continuing with no dependencies (none were discovered)",
+                file=sys.stderr,
+            )
+            return {}
         fail(f"lock file not found: {path} (run discovery and commit cmake-lock.json)")
     with open(path, encoding="utf-8") as fh:
         lock = json.load(fh)
@@ -142,7 +149,7 @@ def main():
         fail("missing required DYNAMIC_* environment configuration")
 
     discovered = load_discovery_log(os.environ.get("DYNAMIC_DISCOVERY_LOG", ""))
-    lock_deps = load_lock(os.environ.get("DYNAMIC_LOCK_FILE", ""))
+    lock_deps = load_lock(os.environ.get("DYNAMIC_LOCK_FILE", ""), discovered_count=len(discovered))
 
     lock_by_lower = {name.lower(): name for name in lock_deps}
     missing = []
@@ -197,13 +204,27 @@ def main():
             lines.append(f"    (builtins.storePath {nix_string(path)})")
         lines.append("  ];")
     all_flags = ["-GNinja"] + cmake_flags
-    lines.append(
-        "  cmakeFlags = [ " + " ".join(nix_string(f) for f in all_flags) + " ];"
-    )
+    lines.append("  cmakeFlags = [")
+    for f in all_flags:
+        lines.append(f"    {nix_string(f)}")
+    for dep_name in sorted(lock_deps):
+        lines.append(
+            f'    "-DFETCHCONTENT_SOURCE_DIR_{dep_name.upper()}=${{{render_fetcher(dep_name, lock_deps[dep_name])}}}"'
+        )
+    lines.append("  ];")
     for name in sorted(lock_deps):
         env_name = "FETCHCONTENT_SOURCE_DIR_" + name.upper()
         lines.append(f"  {nix_string(env_name)} = {render_fetcher(name, lock_deps[name])};")
+    reserved = {
+        "pname", "version", "src", "nativeBuildInputs", "buildInputs",
+        "cmakeFlags", "doCheck", "checkPhase", "installPhase",
+    } | {"FETCHCONTENT_SOURCE_DIR_" + n.upper() for n in lock_deps}
     for key in sorted(extra_env):
+        if key in reserved:
+            fail(
+                f"env key {key!r} collides with a generated derivation "
+                "attribute; rename it or use the dedicated argument"
+            )
         lines.append(f"  {nix_key(key)} = {nix_string(extra_env[key])};")
     if do_check:
         lines.append("  doCheck = true;")

@@ -84,6 +84,14 @@
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;
             rapids-cmake = self'.packages.rapids-cmake;
           };
+          lib-tests = pkgs.callPackage ./tests/lib-tests.nix { };
+          build-type-override = pkgs.callPackage ./tests/build-type {
+            cmake = self'.packages.cmakeMinimal;
+            cmakeDependencyHook = self'.packages.cmakeDependencyHook;
+          };
+          hookless-fetchcontent = pkgs.callPackage ./tests/hookless {
+            cmake = self'.packages.cmakeMinimal;
+          };
           cps-consumption = pkgs.callPackage ./tests/cps {
             cmake = self'.packages.cmakeMinimal;
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;

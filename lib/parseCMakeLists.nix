@@ -17,8 +17,11 @@ let
   argValue = keyword: args:
     let
       m = builtins.match ".*${keyword}[[:space:]]+([^[:space:])]+).*" args;
+      raw = if m == null then null else lib.head m;
     in
-    if m == null then null else lib.head m;
+    # Values are often quoted: GIT_REPOSITORY "https://..."
+    if raw == null then null
+    else lib.removeSuffix "\"" (lib.removePrefix "\"" raw);
 
   # Parse one FetchContent_Declare(...) call. Accepts either the full
   # call text or the text following the `FetchContent_Declare` keyword.

@@ -34,6 +34,9 @@ cmakeConfigurePhase() {
         cmakeDir=${cmakeDir:-..}
     fi
 
+    # Default build type (prepended: user -D later in $cmakeFlags wins)
+    cmakeFlags="-DCMAKE_BUILD_TYPE=${cmakeBuildType:-Release} $cmakeFlags"
+
     if [ -z "$dontAddPrefix" ]; then
         # Absolute GNUInstallDirs paths into the Nix output(s), mirroring
         # nixpkgs' cmake hook; without these, libraries land in lib64

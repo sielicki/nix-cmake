@@ -36,11 +36,19 @@ std::optional<std::string> extract_project_name(const std::string& content) {
 }
 
 std::optional<std::string> extract_version(const std::string& content) {
-    // Match: VERSION x.y.z in project() call
-    std::regex version_regex(R"(VERSION\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?))");
+    // Only look for VERSION inside the project(...) call itself;
+    // otherwise the VERSION of cmake_minimum_required(...) (which
+    // usually appears first) is mistaken for the project version.
+    std::regex project_regex(R"(project\s*\(([^)]*)\)\s*)");
+    std::smatch project_match;
+    if (!std::regex_search(content, project_match, project_regex)) {
+        return std::nullopt;
+    }
+    const std::string args = project_match[1].str();
+    std::regex version_regex(R"((?:^|\s)VERSION\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?))");
     std::smatch match;
 
-    if (std::regex_search(content, match, version_regex)) {
+    if (std::regex_search(args, match, version_regex)) {
         return match[1].str();
     }
 

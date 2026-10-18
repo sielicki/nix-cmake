@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.24)
+project(BuildTypeTest CXX)
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(FATAL_ERROR "user CMAKE_BUILD_TYPE was overridden: '${CMAKE_BUILD_TYPE}'")
+endif()
+add_executable(app main.cpp)
+install(TARGETS app RUNTIME DESTINATION bin)

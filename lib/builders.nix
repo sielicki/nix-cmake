@@ -81,13 +81,25 @@ let
     if lib.isDerivation dep || builtins.isPath dep || builtins.isString dep then dep
     else dep.src or null;
 
+  normalizedSrcs = deps:
+    lib.filterAttrs (_: src: src != null)
+      (lib.mapAttrs (_: depSrc) deps);
+
   fetchContentEnvFor = deps:
     lib.mapAttrs'
       (name: src:
         lib.nameValuePair "FETCHCONTENT_SOURCE_DIR_${lib.toUpper name}" "${src}"
       )
-      (lib.filterAttrs (_: src: src != null)
-        (lib.mapAttrs (_: depSrc) deps));
+      (normalizedSrcs deps);
+
+  # FETCHCONTENT_SOURCE_DIR_* as cache variables. Unlike environment
+  # variables (which only take effect through cmakeBuildHook.cmake),
+  # -D cache entries are honoured by FetchContent directly, so
+  # fetchContentDeps also work with cmakeDependencyHook = null.
+  fetchContentFlagsFor = deps:
+    lib.mapAttrsToList
+      (name: src: "-DFETCHCONTENT_SOURCE_DIR_${lib.toUpper name}=${src}")
+      (normalizedSrcs deps);
 
   /*
     applyLockFile returns the FETCHCONTENT_SOURCE_DIR_* environment
@@ -162,6 +174,7 @@ let
         cmakeFlags = cmakeFlags
           ++ [ "-GNinja" "-DCPM_USE_LOCAL_PACKAGES=ON" ]
           ++ lib.optional (cmakeArtifacts != null) "-DCMAKE_PREFIX_PATH=${cmakeArtifacts}"
+          ++ fetchContentFlagsFor allDeps
           ++ lib.optionals (cps != null) (cpsFlagsFor { inherit cmake cps; });
       };
 
@@ -193,5 +206,5 @@ let
 
 in
 {
-  inherit buildCMakePackage applyLockFile buildDepsOnly cpsFlagsFor cpsGateUuids;
+  inherit buildCMakePackage applyLockFile buildDepsOnly cpsFlagsFor cpsGateUuids fetchContentFlagsFor;
 }
