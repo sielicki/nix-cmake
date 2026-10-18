@@ -1,16 +1,10 @@
-{ installShellFiles
-, buildPackages
+{ buildPackages
 , darwin
 , fetchFromGitHub
-, git
 , gitUpdater
 , lib
 , libiconv
-, libidn2
 , makeBinaryWrapper
-, ninja
-, ps
-, sysctl
 , stdenv
 }:
 let
@@ -26,16 +20,18 @@ let
     };
 
 
-    depsBuildBuild = with buildPackages; [ stdenv.cc ninja which ];
+    # Bootstrap parity with nixpkgs' cmakeMinimal: this derivation
+    # must be buildable with only a compiler, so that it can enter
+    # toolchain bootstrap stages where e.g. curl is banned outright.
+    # The ./bootstrap script needs nothing else (stdenv provides
+    # make/coreutils); do not add ninja or libraries here.
+    depsBuildBuild = [ buildPackages.stdenv.cc ];
 
-    # Don't use cmakeDependencyHook during bootstrap - it would interfere
-    # Include tools needed for the bootstrap build itself
-    nativeBuildInputs = [
-      installShellFiles
+    strictDeps = true;
+
+    # Only needed for the Darwin postInstall wrapper below.
+    nativeBuildInputs = lib.optionals stdenv.hostPlatform.isDarwin [
       makeBinaryWrapper
-      ps
-      sysctl
-    ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
       darwin.DarwinTools # sw_vers
       darwin.system_cmds # vm_stat
     ];
@@ -47,11 +43,12 @@ let
     # Provide basic CMake setup hook for packages that use cmakeMinimal as a build dependency
     setupHooks = [ ./setup-hook.sh ];
 
-    # libiconv: CMake >= 4.4's vendored cmlibarchive requires iconv at
-    # configure time even for the bootstrap build.
-    buildInputs = [
-      (lib.getDev libidn2)
-      (lib.getLib libidn2)
+    # No buildInputs on Linux: CMake >= 4.4's vendored cmlibarchive
+    # needs iconv at configure time, and glibc provides it (see
+    # ICONV_INCLUDE_DIR below). Previously libidn2/libiconv were
+    # linked opportunistically and leaked into the runtime closure.
+    # Darwin has no iconv in libc, hence libiconv there (as upstream).
+    buildInputs = lib.optionals stdenv.hostPlatform.isDarwin [
       (lib.getDev libiconv)
       (lib.getLib libiconv)
     ];
@@ -76,7 +73,8 @@ let
       "--no-system-librhash"
       "--no-system-libuv"
       "--no-system-cppdap"
-      "--generator=Ninja"
+      # No --generator=Ninja: ninja must not be a bootstrap dependency;
+      # bootstrap's default (Unix Makefiles, make from stdenv) is used.
       "--parallel=$NIX_BUILD_CORES"
       "--prefix=${builtins.placeholder "out"}"
       "--bindir=bin"
@@ -91,28 +89,50 @@ let
       # CMake >= 4.4's cmlibarchive requires iconv; the bootstrap CMake's
       # find_path cannot search Nix include dirs, so point it at the header.
       "-DICONV_INCLUDE_DIR=${lib.getDev (if stdenv.hostPlatform.isDarwin then libiconv else stdenv.cc.libc)}/include"
+      # Absolute tool paths, as upstream passes them: cmake would
+      # otherwise resolve ar/ranlib/strip relative to source roots.
+      (lib.cmakeFeature "CMAKE_CXX_COMPILER" "${stdenv.cc.targetPrefix}c++")
+      (lib.cmakeFeature "CMAKE_C_COMPILER" "${stdenv.cc.targetPrefix}cc")
+      (lib.cmakeFeature "CMAKE_AR" "${lib.getBin stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}ar")
+      (lib.cmakeFeature "CMAKE_RANLIB" "${lib.getBin stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}ranlib")
+      (lib.cmakeFeature "CMAKE_STRIP" "${lib.getBin stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}strip")
     ];
+
+    # bootstrap is autoconf-like, not autoconf: no --build/--host.
+    configurePlatforms = [ ];
+
+    # The compiler used to compile the bootstrap cmake itself.
+    # (Only differs from the host compiler when cross; CC_FOR_BUILD
+    # is set by stdenv from depsBuildBuild. Same shape as upstream.)
+    preConfigure = ''
+      configureFlags=("CC=$CC_FOR_BUILD" "CXX=$CXX_FOR_BUILD" ''${configureFlags[@]})
+    '';
 
 
     dontUseNixCMakeSetup = true;
     configureScript = "./bootstrap";
     enableParallelBuilding = true;
 
-    # Wrap cmake binaries to ensure runtime dependencies are available
-    # This maintains our zero-patch philosophy by using wrappers instead of patching source
-    postInstall = ''
-      # Wrap cmake and related tools with runtime dependencies in PATH
+    # Wrap cmake binaries only where runtime helper tools are not
+    # found via PATH in a Nix build environment (Darwin: sw_vers,
+    # vm_stat, sysctl). Deliberately do NOT wrap in `git` (or, on
+    # Linux, ps/sysctl): a minimal/bootstrap CMake must have a tiny
+    # runtime closure, and git would drag in curl, openssl, perl and
+    # more (~95 store paths) -- defeating the point of cmakeMinimal,
+    # and violating e.g. the Darwin bootstrap's ban on curl. Projects
+    # that need git at build time add it to nativeBuildInputs
+    # themselves (as nix-cmake's discovery derivations do). Compare
+    # upstream nixpkgs, whose cmake-minimal closure is 11 paths and
+    # which instead *patches* the helper paths into the source on
+    # Darwin (we keep the zero-patch approach via the wrapper).
+    postInstall = lib.optionalString stdenv.hostPlatform.isDarwin ''
       for prog in cmake ctest cpack; do
         if [ -f "$out/bin/$prog" ]; then
           wrapProgram "$out/bin/$prog" \
-            --prefix PATH : ${lib.makeBinPath ([
-              git
-              ps
-              sysctl
-            ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
+            --prefix PATH : ${lib.makeBinPath [
               darwin.DarwinTools    # sw_vers for macOS version detection
-              darwin.system_cmds    # vm_stat for memory info
-            ])}
+              darwin.system_cmds    # vm_stat/sysctl for system info
+            ]}
         fi
       done
     '';

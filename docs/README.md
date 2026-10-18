@@ -12,6 +12,7 @@ Documents are grouped by how much you should rely on them. The
 | [DYNAMIC-DERIVATIONS.md](DYNAMIC-DERIVATIONS.md) | IFD-free discovery/build via dynamic derivations (RFC 92) |
 | [FLAKE-PARTS.md](FLAKE-PARTS.md) | `flakeModules.default` (`perSystem.cmake-project`) usage |
 | [CPS-INTEGRATION.md](CPS-INTEGRATION.md) | CPS generation/consumption, Threads compat, design notes |
+| [CMAKE-PACKAGING-REVIEW.md](CMAKE-PACKAGING-REVIEW.md) | In-tree CMake vs nixpkgs: patches, bootstrap role of cmakeMinimal, gaps |
 | [RECURSIVE-DISCOVERY.md](RECURSIVE-DISCOVERY.md) | Nested dependency discovery (FOD flow) |
 | [ZERO-PATCH.md](ZERO-PATCH.md) | Why CMake is unpatched and how hermeticity is achieved |
 | [ROADMAP.md](ROADMAP.md) | Shipped vs. exploratory status, by phase |

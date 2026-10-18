@@ -8,7 +8,7 @@
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
-    nixpkgs.url = "https://flakehub.com/f/DeterminateSystems/nixpkgs-weekly/0.1.914780";
+    nixpkgs.url = "github:NixOS/nixpkgs/master";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
     pre-commit-hooks.url = "github:cachix/git-hooks.nix";
@@ -29,8 +29,9 @@
           cmakeToolchainHook = pkgs.callPackage ./pkgs/cmake-toolchain-hook { };
           cmakeDependencyHook = (pkgs.callPackage ./pkgs/cmake-dependency-hook { }).setupHook;
           cmakeMinimal = pkgs.callPackage ./pkgs/cmake/bootstrap.nix { };
+          # Full cmake self-bootstraps via ./bootstrap; it does not
+          # take cmakeMinimal as an input (bootstrap parity).
           cmake = pkgs.callPackage ./pkgs/cmake {
-            cmakeMinimal = self'.packages.cmakeMinimal;
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;
             cmakeToolchainHook = self'.packages.cmakeToolchainHook;
           };
@@ -95,6 +96,17 @@
           cps-consumption = pkgs.callPackage ./tests/cps {
             cmake = self'.packages.cmakeMinimal;
             cmakeDependencyHook = self'.packages.cmakeDependencyHook;
+          };
+          # Bootstrap parity: full cmake self-bootstraps via
+          # ./bootstrap (no CMake input), cmakeMinimal needs only a
+          # compiler and keeps a curl/OpenSSL-free closure, and the
+          # full package still works as a consumer build tool.
+          bootstrap-properties = pkgs.callPackage ./tests/bootstrap {
+            cmake = self'.packages.cmake;
+            cmakeMinimal = self'.packages.cmakeMinimal;
+          };
+          bootstrap-consumer = pkgs.callPackage ./tests/bootstrap-consumer {
+            cmake = self'.packages.cmake;
           };
           # The cmake2nix package itself is built as part of `packages`;
           # `nix flake check` builds it via this alias on all systems.
