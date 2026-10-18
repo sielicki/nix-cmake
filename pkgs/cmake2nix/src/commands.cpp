@@ -1,5 +1,6 @@
 #include "cmake2nix.hpp"
 
+#include <cstdlib>
 #include <fmt/core.h>
 #include <fstream>
 
@@ -95,7 +96,9 @@ void shell(const Config& config) {
     }
 
     std::string cmd = fmt::format("nix-shell {} -A shell", composition.string());
-    std::system(cmd.c_str());
+    if (std::system(cmd.c_str()) != 0) {
+        throw std::runtime_error("nix-shell failed: " + cmd);
+    }
 }
 
 void build(const Config& config) {
@@ -107,7 +110,9 @@ void build(const Config& config) {
     }
 
     std::string cmd = fmt::format("nix-build {} -A package", composition.string());
-    std::system(cmd.c_str());
+    if (std::system(cmd.c_str()) != 0) {
+        throw std::runtime_error("nix-build failed: " + cmd);
+    }
 }
 
 } // namespace cmake2nix::commands

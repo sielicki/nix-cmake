@@ -9,7 +9,7 @@
         "owner": "fmtlib",
         "repo": "fmt",
         "rev": "10.2.1",
-        "hash": "sha256-yb1Q8VGXmBMXrXvt5V1+VCbWlg5UxAlADCa8g9p7tX4="
+        "hash": "sha256-pEltGLAHLZ3xypD/Ur4dWPWJ9BGVXwqQyKcDWVmC3co="
       },
       "metadata": {
         "gitRepository": "https://github.com/fmtlib/fmt.git",

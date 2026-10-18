@@ -1,9 +1,9 @@
 # Integration of CMake toolchain generation into stdenv
-{ lib, stdenv, makeSetupHook, writeTextFile, writeShellScript }:
+{ lib, stdenv, makeSetupHook, writeTextFile }:
 
 let
   cmakeToolchainGenerator = import ./cmake-toolchain.nix {
-    inherit lib writeTextFile writeShellScript;
+    inherit lib writeTextFile;
   };
 
   cmakeToolchain = cmakeToolchainGenerator stdenv;

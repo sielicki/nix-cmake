@@ -1,64 +1,65 @@
-{ self, lib, ... }:
+{ lib, flake-parts-lib, ... }:
 
+let
+  inherit (flake-parts-lib) mkPerSystemOption;
+  inherit (lib) mkOption types;
+in
 {
-  options.perSystem = lib.mkOption {
-    type = lib.types.submoduleWith {
-      modules = [
-        ({ config, pkgs, ... }: {
-          options.cmake-project = lib.mkOption {
-            description = "Declarative Nix-CMake project configuration";
-            default = null;
-            type = lib.types.nullOr (lib.types.submodule {
-              options = {
-                src = lib.mkOption {
-                  type = lib.types.path;
-                  description = "Project source directory";
-                };
-                lockFile = lib.mkOption {
-                  type = lib.types.nullOr lib.types.path;
-                  default = null;
-                  description = "Path to cmake-lock.json";
-                };
-                pname = lib.mkOption {
-                  type = lib.types.str;
-                  description = "Package name";
-                };
-                version = lib.mkOption {
-                  type = lib.types.str;
-                  description = "Package version";
-                };
-                cmakeFlags = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [ ];
-                };
-              };
-            });
+  options.perSystem = mkPerSystemOption ({ config, pkgs, ... }: {
+    options.cmake-project = mkOption {
+      description = "Declarative nix-cmake project configuration";
+      default = null;
+      type = types.nullOr (types.submodule {
+        options = {
+          src = mkOption {
+            type = types.path;
+            description = "Project source directory (workspace root)";
           };
-
-          config = lib.mkIf (config.cmake-project != null) (
-            let
-              nix-cmake = import ../lib { inherit (pkgs) lib; };
-              workspace = nix-cmake.workspace pkgs {
-                inherit (config.cmake-project) src lockFile;
-              };
-            in
-            {
-              packages = {
-                ${config.cmake-project.pname} = workspace.buildPackage {
-                  inherit (config.cmake-project) pname version cmakeFlags;
-                };
-                default = config.packages.${config.cmake-project.pname};
-              };
-
-              devShells.default = workspace.mkShell { };
-
-              checks.discovery = workspace.discoverDependencies {
-                inherit (config.cmake-project) src cmakeFlags;
-              };
-            }
-          );
-        })
-      ];
+          lockFile = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            description = "Path to cmake-lock.json (default: <src>/cmake-lock.json)";
+          };
+          pname = mkOption {
+            type = types.str;
+            description = "Package name";
+          };
+          version = mkOption {
+            type = types.str;
+            description = "Package version";
+          };
+          cmakeFlags = mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+            description = "Extra CMake configuration flags";
+          };
+        };
+      });
     };
-  };
+
+    config = lib.mkIf (config.cmake-project != null) (
+      let
+        nix-cmake = import ../lib { inherit (pkgs) lib; };
+        workspaceFns = nix-cmake.workspace pkgs;
+        workspace = workspaceFns.loadWorkspace {
+          workspaceRoot = config.cmake-project.src;
+          inherit (config.cmake-project) lockFile;
+        };
+      in
+      {
+        packages = {
+          ${config.cmake-project.pname} = workspace.buildPackage {
+            inherit (config.cmake-project) pname version cmakeFlags src;
+          };
+          default = config.packages.${config.cmake-project.pname};
+        };
+
+        devShells.default = workspace.mkShell { };
+
+        checks.discovery = workspaceFns.discoverDependencies {
+          inherit (config.cmake-project) src cmakeFlags;
+        };
+      }
+    );
+  });
 }

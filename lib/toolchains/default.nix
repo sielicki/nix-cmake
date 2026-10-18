@@ -3,10 +3,11 @@
 let
   mkToolchain =
     { stdenv ? pkgs.stdenv
-    , cmake ? (pkgs.cmakeMinimal or pkgs.cmake)
     , extraFlags ? [ ]
     }:
-    pkgs.callPackage ../../pkgs/cmake-toolchain-hook { inherit stdenv; };
+    lib.warnIf (extraFlags != [ ])
+      "nix-cmake toolchains: extraFlags is not implemented yet and will be ignored"
+      (pkgs.callPackage ../../pkgs/cmake-toolchain-hook { inherit stdenv; });
 
 in
 {
@@ -19,11 +20,10 @@ in
     , extraFlags ? [ ]
     }:
     let
-      # Select the desired clang version
-      clangPkgs = if version == null then pkgs.llvmPackages else pkgs."llvmPackages_${version}";
+      clangPkgs = if version == null then pkgs.llvmPackages else pkgs."llvmPackages_${toString version}";
     in
     mkToolchain {
-      stdenv = clangPkgs.stdenv;
+      inherit (clangPkgs) stdenv;
       inherit extraFlags;
     };
 
@@ -33,8 +33,7 @@ in
     , extraFlags ? [ ]
     }:
     let
-      # Select the desired gcc version
-      gccPkg = if version == null then pkgs.gcc else pkgs."gcc${version}";
+      gccPkg = if version == null then pkgs.gcc else pkgs."gcc${toString version}";
       stdenv = pkgs.overrideCC pkgs.stdenv gccPkg;
     in
     mkToolchain {

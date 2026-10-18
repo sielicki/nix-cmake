@@ -16,8 +16,10 @@ stdenv.mkDerivation rec {
     mkdir -p $out/share/cmake/rapids-cmake
     cp -r * $out/share/cmake/rapids-cmake/
     
-    # Copy our hook
+    # Copy our hook (substituting the version placeholder)
     cp ${./hook.cmake} $out/share/cmake/rapids-cmake/nix-rapids-hook.cmake
+    substituteInPlace $out/share/cmake/rapids-cmake/nix-rapids-hook.cmake \
+      --replace-fail "@version@" "${version}"
     
     # Append include to the main config file if it exists, or create a simple init
     # In rapids-cmake, the entry point is typically rapids-cmake-config.cmake or similar

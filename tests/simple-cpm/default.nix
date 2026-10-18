@@ -29,6 +29,7 @@ let
   };
 in
 workspace.buildPackage {
+  inherit cmake cmakeDependencyHook;
   pname = "simple-cpm-test";
   version = "0.1.0";
 

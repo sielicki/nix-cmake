@@ -29,14 +29,16 @@ FetchContent_MakeAvailable(fmt)
 
 ### 2. Generate Lock File
 
-Run discovery to generate `cmake-lock.json`:
+Run discovery (`result/discovery-log.json` + File API replies), then
+update hashes with `cmake2nix`:
 
 ```bash
-nix run .#discovery
+nix build .#discovery
 cmake2nix lock
 ```
 
-This discovers all FetchContent dependencies and their exact versions.
+This discovers all FetchContent dependencies and pins their exact
+fetchers in `cmake-lock.json`.
 
 ### 3. Build
 
@@ -80,7 +82,7 @@ in buildPackage {
 **After (nix-cmake):**
 ```nix
 let
-  workspace = nix-cmake.lib.workspace pkgs {
+  workspace = (nix-cmake.lib.workspace pkgs).loadWorkspace {
     workspaceRoot = ./.;  # Reads cmake-lock.json automatically
   };
 in {

@@ -35,6 +35,27 @@ std::string extract_hash(const std::string& output) {
 
     return "";
 }
+
+std::string trim(const std::string& s) {
+    const auto begin = s.find_first_not_of(" \t\n\r");
+    if (begin == std::string::npos) {
+        return "";
+    }
+    const auto end = s.find_last_not_of(" \t\n\r");
+    return s.substr(begin, end - begin + 1);
+}
+
+// Convert a legacy (base16/base32) sha256 digest to SRI form.
+// Prefixing a base32 digest with "sha256-" does NOT produce a valid
+// SRI hash: SRI payloads are base64-encoded.
+std::string convert_to_sri(const std::string& hash) {
+    std::string cmd = fmt::format("nix hash convert --hash-algo sha256 --to sri {} 2>&1", hash);
+    std::string result = trim(exec_command(cmd));
+    if (result.rfind("sha256-", 0) != 0) {
+        throw std::runtime_error("Failed to convert hash '" + hash + "' to SRI: " + result);
+    }
+    return result;
+}
 } // namespace
 
 void prefetch_all(LockFile& lock, bool verbose) {
@@ -66,11 +87,11 @@ void prefetch_all(LockFile& lock, bool verbose) {
                 std::string url = dep.args["url"];
                 std::string rev = dep.args.value("rev", "HEAD");
                 hash = prefetch_git(url, rev);
-                dep.args["sha256"] = hash;
+                dep.args["hash"] = hash;
             } else if (dep.method == "fetchurl") {
                 std::string url = dep.args["url"];
                 hash = prefetch_url(url);
-                dep.args["sha256"] = hash;
+                dep.args["hash"] = hash;
             }
 
             if (!hash.empty()) {
@@ -112,12 +133,18 @@ std::string prefetch_git(const std::string& url, const std::string& rev) {
     std::string cmd = fmt::format("nix-prefetch-git --url {} --rev {} 2>&1", url, rev);
     std::string output = exec_command(cmd);
 
-    // nix-prefetch-git outputs JSON
+    // nix-prefetch-git outputs JSON: "hash" is SRI, legacy "sha256" is
+    // a base32 digest that must be converted (see convert_to_sri).
     try {
         json j = json::parse(output);
-        if (j.contains("sha256")) {
-            return "sha256-" + std::string(j["sha256"]);
+        if (j.contains("hash")) {
+            return j["hash"];
         }
+        if (j.contains("sha256")) {
+            return convert_to_sri(j["sha256"]);
+        }
+    } catch (const std::runtime_error&) {
+        throw;
     } catch (...) {
         // Fall back to hash extraction
     }
@@ -131,15 +158,30 @@ std::string prefetch_git(const std::string& url, const std::string& rev) {
 }
 
 std::string prefetch_url(const std::string& url) {
-    std::string cmd = fmt::format("nix-prefetch-url {} 2>&1", url);
+    // `nix store prefetch-file` prints an SRI hash as JSON. The older
+    // nix-prefetch-url prints a bare base32 digest that extract_hash()
+    // cannot (and should not) mistake for SRI.
+    std::string cmd = fmt::format("nix store prefetch-file --json {} 2>&1", url);
     std::string output = exec_command(cmd);
 
-    std::string hash = extract_hash(output);
-    if (hash.empty()) {
-        throw std::runtime_error("Failed to extract hash from nix-prefetch-url output");
+    try {
+        json j = json::parse(output);
+        if (j.contains("hash")) {
+            return j["hash"];
+        }
+    } catch (...) {
+        // Fall back to legacy tool below
     }
 
-    return hash;
+    std::string fallback = exec_command(fmt::format("nix-prefetch-url {} 2>&1", url));
+    std::string digest = trim(fallback.substr(0, fallback.find('\n')));
+    if (digest.empty()) {
+        throw std::runtime_error("Failed to extract hash from nix-prefetch-url output");
+    }
+    if (digest.rfind("sha256-", 0) == 0) {
+        return digest;
+    }
+    return convert_to_sri(digest);
 }
 
 } // namespace cmake2nix::prefetcher

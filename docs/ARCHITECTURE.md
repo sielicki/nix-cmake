@@ -131,7 +131,7 @@ When a dependency is requested, the provider checks if a Nix-provided source dir
 ## Unpatched CMake (Zero-Patch Philosophy)
 
 A primary goal of `nix-cmake` is to show that a standard, unpatched Kitware CMake release can work effectively in Nix.
-- We use an in-tree `cmakeMinimal` (CMake 4.2.1) without the typical Nixpkgs patches.
+- We use an in-tree `cmakeMinimal` (CMake 4.4.3) without the typical Nixpkgs patches.
 - We rely on declarative toolchain files and dependency providers instead of hardcoding Nix-specific paths into the CMake source code.
 
 ### Avoiding Impure System Paths
@@ -306,7 +306,7 @@ loadWorkspace = { workspaceRoot }:
 
 **Key Functions**:
 - `buildCMakePackage`: Core builder that sets up environment variables
-- `buildDepsOnly`: Build only dependencies (for caching)
+- `buildDepsOnly`: experimental; preserves the full build tree for cache warming (it does not isolate dependency targets)
 
 **Architecture**:
 ```nix
@@ -487,7 +487,7 @@ Generated cmake-lock.json
   outputs = { nixpkgs, nix-cmake, ... }: {
     packages.default = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
-      workspace = nix-cmake.lib.workspace pkgs {
+      workspace = (nix-cmake.lib.workspace pkgs).loadWorkspace {
         workspaceRoot = ./.;  # Reads cmake-lock.json automatically
       };
     in workspace.buildPackage {

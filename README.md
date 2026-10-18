@@ -1,27 +1,33 @@
 # nix-cmake
 
-## IMPORTANT NOTE
+## Status
 
-This repo is primarily LLM-written, but sort-of works as a proof of concept. I don't recommend actually using this in its current state. It needs to be polished up.
+Experimental. The core flows — dependency-provider interception,
+discovery, lockfile-driven builds, and [dynamic derivations](docs/DYNAMIC-DERIVATIONS.md) —
+are covered by flake checks, but the APIs are not yet stable.
+Originally LLM-written as a proof of concept; being polished in the open.
 
 ## What is it?
 
-A Nix library for seamless, modular, and unpatched CMake integration. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for real details.
+A Nix library for seamless, modular, and unpatched CMake integration. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 `nix-cmake` bridges the gap between CMake's dynamic ecosystem (CPM, FetchContent, RAPIDS) and Nix's reproducible, sandboxed build system. It aims to provide a declarative, `uv2nix`/`crane`-style experience for C++ projects.
 
-
 ## Key Features
 
-- **Zero-Patch Philosophy**: Uses standard Kitware CMake (4.2.1) without the extensive patching typically required by Nixpkgs.
-- **Dependency Provider Interception**: Automatically intercepts `FetchContent` and `CPM` calls to provide Nix-managed sources.
-- **Recursive Discovery**: Supports FOD-based exploration of nested dependency trees to build complete dependency graphs.
-- **File API Integration**: Leverages the CMake File API for accurate extraction of project targets and metadata.
-- **Modular Overlays**: Provides a fixed-point API for managing and overriding project dependencies.
+- **Zero-Patch Philosophy**: Uses standard Kitware CMake (4.4.3) without the extensive patching typically required by Nixpkgs.
+- **Dependency Provider Interception**: Automatically intercepts `FetchContent` and `find_package` calls (and thereby most `CPM` usage) to provide Nix-managed sources.
+- **Discovery + Lockfiles**: Configures projects in discovery mode to enumerate dependencies into a checked-in `cmake-lock.json`.
+- **Dynamic Derivations**: `lib.dynamic` performs discovery and generates the real build *at build time* (RFC 92), so evaluation never blocks on import-from-derivation.
+- **File API Integration**: Leverages the CMake File API for extraction of project targets and metadata.
+- **Overlays**: Projects can be exposed as a fixed-point overlay of built dependencies.
 
 ## Quick Start
 
-### Basic Project Build
+### Lockfile-driven build
+
+With a `cmake-lock.json` next to your `CMakeLists.txt` (generate one
+with the discovery derivation or `cmake2nix lock`):
 
 ```nix
 {
@@ -29,40 +35,92 @@ A Nix library for seamless, modular, and unpatched CMake integration. See [ARCHI
 
   outputs = { nix-cmake, nixpkgs, ... }:
     let
-      pkgs = nixpkgs.legacyPackages.x86_64-linux;
-      workspace = nix-cmake.lib.workspace pkgs;
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      workspace = (nix-cmake.lib.workspace pkgs).loadWorkspace {
+        workspaceRoot = ./.;
+      };
     in {
-      packages.x86_64-linux.default = workspace.buildCMakePackage {
+      packages.${system}.default = workspace.buildPackage {
         pname = "my-app";
         version = "0.1.0";
-        src = ./.;
-        
-        # Inject dependencies
-        fetchContentDeps = {
-          fmt = pkgs.fetchFromGitHub { ... };
-        };
       };
+      devShells.${system}.default = workspace.mkShell { };
     };
 }
 ```
 
-### Dependency Discovery
+Explicit one-off dependencies can be injected instead via
+`builders.buildCMakePackage { fetchContentDeps = { fmt = ...; }; }`
+(see [API.md](docs/API.md)).
+
+### Dynamic-derivation build
+
+Opt-in only: used when your Nix has the `ca-derivations`,
+`dynamic-derivations` and `recursive-nix` experimental features
+enabled, ignored otherwise — nothing else in nix-cmake requires
+dynamic derivations or import-from-derivation. See
+[DYNAMIC-DERIVATIONS.md](docs/DYNAMIC-DERIVATIONS.md).
+
+```nix
+packages.${system}.default = (nix-cmake.lib.dynamic pkgs).buildCMakePackage {
+  pname = "my-app";
+  version = "0.1.0";
+  src = ./.;
+};
+```
+
+### Dependency discovery
 
 ```bash
-# Perform a recursive discovery pass
-nix build .#discovery --extra-experimental-features "nix-command flakes"
+# Configure-only derivation emitting File API replies + discovery log
+nix build .#checks.x86_64-linux.discovery-test
 ```
+
+## Flake outputs
+
+- `packages`: `cmake` (unpatched 4.4.3, default), `cmakeMinimal` (bootstrap), `cmake2nix`, `cmakeToolchainHook`, `cmakeDependencyHook`, `rapids-cmake`, plus `dogfood-*` (upstream projects repackaged with nix-cmake, see [dogfood/](dogfood/README.md)).
+- `lib`: `workspace`, `builders`, `dynamic`, `toolchains`, plus lockfile helpers.
+- `overlays.default`: adds `cmakeUnpatched` / `cmakeUnpatchedMinimal` (deliberately non-conflicting names).
+- `flakeModules.default`: flake-parts module (`perSystem.cmake-project`).
+- `checks`: FetchContent/CPM/multi-dependency/discovery/stdexec/dynamic tests.
+- `devShells.default`: in-tree CMake + `cmake2nix` for working on this repo.
 
 ## Documentation
 
-Detailed technical documentation and guides are available in the [docs/](docs/) directory:
+Detailed technical documentation is available in the [docs index](docs/README.md), including:
 
 - **[Architecture](docs/ARCHITECTURE.md)** - How the dependency provider and unpatched CMake work.
+- **[Dynamic Derivations](docs/DYNAMIC-DERIVATIONS.md)** - IFD-free discovery and build generation.
 - **[Recursive Discovery](docs/RECURSIVE-DISCOVERY.md)** - Exploring multi-level dependency trees.
-- **[API Reference](docs/API.md)** - Detailed signatures for workspace and builder functions.
+- **[API Reference](docs/API.md)** - Signatures for workspace, builder, and dynamic functions.
 - **[Design Vision](docs/DESIGN.md)** - Inspiration from `crane` and `uv2nix`.
 - **[Roadmap](docs/ROADMAP.md)** - Current status and future plans.
-- **[Comparisons](docs/COMPARISONS.md)** - Comparison to other `*2nix` tools and real-world examples.
+- **[Comparisons](docs/COMPARISONS.md)** - Comparison to other `*2nix` tools.
+
+Some documents in `docs/` are design explorations for features that are
+only partially implemented; the roadmap marks what actually ships.
+
+## Development
+
+```bash
+nix develop          # in-tree CMake + cmake2nix; installs pre-commit hooks
+nix fmt              # treefmt: nixpkgs-fmt + clang-format
+nix flake check      # tests, treefmt, and pre-commit hooks
+                     # (statix, deadnix, shellcheck, ruff)
+```
+
+Dynamic-derivation paths are exercised only when your Nix has the
+`ca-derivations`, `dynamic-derivations`, and `recursive-nix`
+experimental features enabled (the dynamic check is then present;
+otherwise it is absent rather than failing). The rest of the check
+suite needs neither those features nor import-from-derivation.
+To prove no import-from-derivation is involved:
+
+```bash
+nix build .#checks.x86_64-linux.dynamic-fetchcontent \
+  --option allow-import-from-derivation false
+```
 
 ## License
 

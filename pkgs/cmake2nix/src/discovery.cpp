@@ -45,15 +45,19 @@ std::vector<Dependency> run(const Config& config) {
 fs::path create_discovery_derivation(const Config& config) {
     fmt::print("cmake2nix: Creating discovery derivation...\n");
 
-    // Build nix expression for discovery
+    // Build nix expression for discovery.
+    // Requires NIX_PATH entries for <nixpkgs> and <nix-cmake> (the
+    // latter pointing at a nix-cmake checkout), e.g.
+    //   NIX_PATH=nixpkgs=...:nix-cmake=/path/to/nix-cmake
+    fs::path src_dir = fs::absolute(config.input_file).parent_path();
     std::string nix_expr = R"(
 let
   pkgs = import <nixpkgs> {};
-  nix-cmake = pkgs.callPackage <nix-cmake> {};
+  nix-cmake = import <nix-cmake/lib> { inherit (pkgs) lib; };
   workspace = nix-cmake.workspace pkgs;
 in
 workspace.discoverDependencies {
-  src = )" + config.input_file.parent_path().string() +
+  src = )" + src_dir.string() +
                            R"(;
   cmakeFlags = [)";
 
@@ -79,8 +83,13 @@ workspace.discoverDependencies {
 
     // Extract output path from nix-build output
     // The last line should be the store path
-    size_t last_newline = output.find_last_of('\n', output.size() - 2);
-    std::string store_path = output.substr(last_newline + 1);
+    if (output.empty()) {
+        throw std::runtime_error("Discovery build produced no output (nix-build failed?)");
+    }
+    size_t last_newline =
+        output.size() >= 2 ? output.find_last_of('\n', output.size() - 2) : std::string::npos;
+    std::string store_path =
+        last_newline == std::string::npos ? output : output.substr(last_newline + 1);
 
     // Trim whitespace
     store_path.erase(0, store_path.find_first_not_of(" \t\n\r"));
@@ -130,7 +139,7 @@ std::vector<Dependency> parse_discovery_log(const fs::path& log_file) {
                     dep.method = "fetchgit";
                     dep.args["url"] = repo;
                     dep.args["rev"] = j.value("gitTag", "HEAD");
-                    dep.args["sha256"] = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+                    dep.args["hash"] = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
                 }
 
                 // Store metadata

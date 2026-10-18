@@ -1,5 +1,5 @@
 # CMake dependency setup hook - makes Nix dependencies available to CMake
-{ lib, writeTextFile, writeShellScript, cmake ? null }:
+{ writeTextFile, writeShellScript }:
 
 {
   # Main setup hook for CMake dependency management
@@ -39,27 +39,94 @@
           cmakeDir=''${cmakeDir:-.}
         fi
         
-        # Convert cmakeFlags from space-separated string to array
-        # Nix passes lists as space-separated strings in environment variables
-        local cmakeFlagsArray=()
+        # Convert cmakeFlags from space-separated string to array.
+        # Nix passes lists as space-separated strings in environment
+        # variables (so a flag containing spaces cannot be expressed
+        # this way). A pre-existing `cmakeFlagsArray` bash array, e.g.
+        # set by preConfigure, is honoured as-is.
+        local parsedCmakeFlags=()
         if [[ -n "''${cmakeFlags:-}" ]]; then
-          read -ra cmakeFlagsArray <<< "$cmakeFlags"
+          read -ra parsedCmakeFlags <<< "$cmakeFlags"
+        fi
+        if [[ -v cmakeFlagsArray ]]; then
+          parsedCmakeFlags+=("''${cmakeFlagsArray[@]}")
         fi
 
         local cmakeFlags=(
-          "''${cmakeFlagsArray[@]}"
+          "''${parsedCmakeFlags[@]}"
           "-DCMAKE_BUILD_TYPE=''${cmakeBuildType:-Release}"
         )
+
+        # Install into the Nix output(s) with absolute GNUInstallDirs
+        # paths (mirrors nixpkgs' cmake hook). Without these, projects
+        # install libraries into lib64 and executables end up without
+        # an RPATH to their own libraries. User-supplied -D values for
+        # the same variables win: CMake uses the last -D on the command
+        # line, and ours are appended only when absent from user flags.
+        if [[ -z "''${dontAddPrefix:-}" ]]; then
+          local _nixCmakeHasFlag=""
+          for _flag in "''${parsedCmakeFlags[@]}"; do
+            case "$_flag" in
+              -DCMAKE_INSTALL_PREFIX=*|-DCMAKE_INSTALL_BINDIR=*|-DCMAKE_INSTALL_SBINDIR=*|-DCMAKE_INSTALL_INCLUDEDIR=*|-DCMAKE_INSTALL_MANDIR=*|-DCMAKE_INSTALL_INFODIR=*|-DCMAKE_INSTALL_DOCDIR=*|-DCMAKE_INSTALL_LIBDIR=*|-DCMAKE_INSTALL_LIBEXECDIR=*|-DCMAKE_INSTALL_LOCALEDIR=*|-DCMAKE_INSTALL_NAME_DIR=*)
+                _nixCmakeHasFlag="$_nixCmakeHasFlag ''${_flag%%=*} " ;;
+            esac
+          done
+          _nixCmakeMaybe() {
+            case " $_nixCmakeHasFlag " in
+              *" $1 "*) ;;
+              *) cmakeFlags+=("$1=$2") ;;
+            esac
+          }
+          _nixCmakeMaybe -DCMAKE_INSTALL_PREFIX "''${!outputBin:-$out}"
+          _nixCmakeMaybe -DCMAKE_INSTALL_BINDIR "''${!outputBin:-$out}/bin"
+          _nixCmakeMaybe -DCMAKE_INSTALL_SBINDIR "''${!outputBin:-$out}/sbin"
+          _nixCmakeMaybe -DCMAKE_INSTALL_INCLUDEDIR "''${!outputInclude:-$out}/include"
+          _nixCmakeMaybe -DCMAKE_INSTALL_MANDIR "''${!outputMan:-$out}/share/man"
+          _nixCmakeMaybe -DCMAKE_INSTALL_INFODIR "''${!outputInfo:-$out}/share/info"
+          _nixCmakeMaybe -DCMAKE_INSTALL_DOCDIR "''${!outputDoc:-$out}/share/doc"
+          _nixCmakeMaybe -DCMAKE_INSTALL_LIBDIR "''${!outputLib:-$out}/lib"
+          _nixCmakeMaybe -DCMAKE_INSTALL_LIBEXECDIR "''${!outputLib:-$out}/libexec"
+          _nixCmakeMaybe -DCMAKE_INSTALL_LOCALEDIR "''${!outputLib:-$out}/share/locale"
+          _nixCmakeMaybe -DCMAKE_INSTALL_NAME_DIR "''${!outputLib:-$out}/lib"
+          unset -f _nixCmakeMaybe
+        fi
 
         # Add CMAKE_PROJECT_TOP_LEVEL_INCLUDES if we have it
         if [[ -n "''${NIX_CMAKE_TOP_LEVEL_INCLUDES:-}" ]]; then
           cmakeFlags+=("-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=''${NIX_CMAKE_TOP_LEVEL_INCLUDES}")
         fi
 
-        # Synchronize CMAKE_PREFIX_PATH with Nix search paths if needed
-        # Our hook will also manage this in CMake, but setting it here helps boot-strapping find_package
+        # Synchronize CMAKE_PREFIX_PATH with Nix search paths.
+        # cmakeBuildHook.cmake also manages this in CMake, but passing
+        # it explicitly makes module-mode find_package calls (e.g.
+        # FindOpenSSL) work before/regardless of hook processing.
+        # Note: the environment form is colon-separated; CMake lists
+        # are semicolon-separated.
+        # Iterate stdenv's accumulated dependency arrays (which include
+        # the propagated-input closure, e.g. fmt via spdlog's
+        # propagatedBuildInputs) rather than only the direct input
+        # strings. Falls back to the plain variables when the arrays
+        # are unavailable.
+        local cmakePrefixPath=""
+        local _allDeps=()
+        if [[ -v pkgsHostTarget ]]; then _allDeps+=("''${pkgsHostTarget[@]}"); fi
+        if [[ -v pkgsBuildBuild ]]; then _allDeps+=("''${pkgsBuildBuild[@]}"); fi
+        if [[ -v pkgsBuildTarget ]]; then _allDeps+=("''${pkgsBuildTarget[@]}"); fi
+        _allDeps+=(''${buildInputs:-} ''${propagatedBuildInputs:-} ''${nativeBuildInputs:-})
+        for dep in "''${_allDeps[@]}"; do
+          if [[ -d "$dep" ]]; then
+            case ";$cmakePrefixPath;" in
+              *";$dep;"*) ;;
+              *) cmakePrefixPath="''${cmakePrefixPath:+$cmakePrefixPath;}$dep" ;;
+            esac
+          fi
+        done
         if [[ -n "''${CMAKE_PREFIX_PATH:-}" ]]; then
-           cmakeFlags+=("-DCMAKE_PREFIX_PATH=''${CMAKE_PREFIX_PATH}")
+          local envPrefixPath="''${CMAKE_PREFIX_PATH//:/;}"
+          cmakePrefixPath="''${cmakePrefixPath:+$cmakePrefixPath;}$envPrefixPath"
+        fi
+        if [[ -n "$cmakePrefixPath" ]]; then
+          cmakeFlags+=("-DCMAKE_PREFIX_PATH=$cmakePrefixPath")
         fi
 
         # Ignore impure system paths (zero-patch philosophy)

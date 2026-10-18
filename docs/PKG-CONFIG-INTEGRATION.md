@@ -1,5 +1,9 @@
 # pkg-config Integration via cmake_pkg_config
 
+> **Status: design exploration.** This document describes a direction
+> that is not (fully) implemented. For what ships today, see
+> [API.md](API.md) and [ROADMAP.md](ROADMAP.md).
+
 ## Overview
 
 CMake 3.31+ introduced native pkg-config support via `cmake_pkg_config()`, and CMake 4.1+ enhanced it with `IMPORT` and `POPULATE` commands. This provides a **patch-free** way to integrate pkg-config-based dependencies into nix-cmake.

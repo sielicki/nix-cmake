@@ -1,5 +1,9 @@
 # nix-cmake Design Document
 
+> **Status: design exploration.** This document describes a direction
+> that is not (fully) implemented. For what ships today, see
+> [API.md](API.md) and [ROADMAP.md](ROADMAP.md).
+
 ## Vision
 
 Create a **crane/uv2nix-style declarative CMake dependency manager for Nix** that makes packaging CMake projects as ergonomic as packaging Rust (crane) or Python (uv2nix) projects.

@@ -1,7 +1,6 @@
 { lib
 , pkgs
 , cmake
-, cmakeDependencyHook
 , rapids-cmake
 , fetchFromGitHub
 }:
@@ -18,6 +17,7 @@ let
   };
 in
 workspace.discoverDependencies {
+  inherit cmake;
   src = stdexecSrc;
 
   nativeBuildInputs = [ rapids-cmake pkgs.git ];

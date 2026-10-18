@@ -67,8 +67,8 @@ let
     in
     drv;
 
-  recursiveDiscover = { src, outputHash, outputHashAlgo ? "sha256", ... } @ args:
-    (discoverDependencies (args // { recursive = true; })).overrideAttrs (old: {
+  recursiveDiscover = { outputHash, outputHashAlgo ? "sha256", ... } @ args:
+    (discoverDependencies (args // { recursive = true; })).overrideAttrs (_: {
       inherit outputHash outputHashAlgo;
       outputHashMode = "recursive";
     });
@@ -117,6 +117,9 @@ let
       )
       targets;
 
+  # NOTE: reads a derivation output during evaluation (import-from-
+  # derivation). Prefer lib/dynamic.nix for new code; this remains for
+  # interactive lock-file workflows where IFD is acceptable.
   extractFromDiscoveryLog = configured:
     let
       logPath = "${configured}/discovery-log.json";
@@ -125,32 +128,48 @@ let
     in
     map (l: builtins.fromJSON (builtins.unsafeDiscardStringContext l)) lines;
 
+  # Instantiate the source fetchers described by a lock file.
+  # Returns an attrset of dependency name -> source (or null when the
+  # lock entry has no usable fetcher specification). Entries may be
+  # overridden per-name via `fetchers`.
+  lockFetchers = { lock, fetchers ? { } }:
+    lib.mapAttrs
+      (name: dep:
+        if builtins.hasAttr name fetchers then fetchers.${name}
+        else if dep ? method && dep ? args && dep.method != null then (pkgs.${dep.method} dep.args)
+        else null
+      )
+      (lock.dependencies or { });
+
   mkProjectOverlay = { lock, fetchers ? { } }:
-    self: super:
+    _final: _prev:
       let
-        # Use the provided fetchers, or fall back to the lock file's fetcher specs
+        srcs = lockFetchers { inherit lock fetchers; };
+        builders = import ./builders.nix { inherit lib pkgs; };
+
         projectPackages = lib.mapAttrs
           (name: dep:
             let
-              # 1. Try explicit fetcher override
-              # 2. Try to instantiate the fetcher from the lock file
-              # 3. Fall back to null if no source is available
-              src =
-                if builtins.hasAttr name fetchers then fetchers.${name}
-                else if dep ? method && dep ? args then (pkgs.${dep.method} dep.args)
-                else null;
+              src = srcs.${name};
+              version =
+                let v = dep.version or null;
+                in if v == null then "unknown" else v;
             in
             {
               inherit name src;
-              pkg = if src == null then null else
-              pkgs.stdenv.mkDerivation {
-                name = "${name}-${dep.version or "unknown"}";
-                inherit src;
-                # Add target metadata for later mapping
-                passthru = {
-                  cmakeTargets = dep.metadata.cmakeTargets or [ name ];
-                };
-              };
+              # A best-effort standalone build of the dependency, for use
+              # via find_package() by other projects. Evaluated lazily.
+              pkg =
+                if src == null then null
+                else
+                  (builders.buildCMakePackage {
+                    pname = name;
+                    inherit version src;
+                  }).overrideAttrs (old: {
+                    passthru = (old.passthru or { }) // {
+                      cmakeTargets = dep.metadata.cmakeTargets or [ name ];
+                    };
+                  });
             }
           )
           (lock.dependencies or { });
@@ -159,7 +178,7 @@ let
         cmakeProject = projectPackages;
       };
 
-  loadWorkspace = { workspaceRoot }:
+  loadWorkspace = { workspaceRoot, lockFile ? null }:
     let
       # Check for cmake-lock.json first (our native format)
       cmakeLockPath = workspaceRoot + "/cmake-lock.json";
@@ -169,9 +188,11 @@ let
       cpmLockPath = workspaceRoot + "/package-lock.cmake";
       hasCPMLock = builtins.pathExists cpmLockPath;
 
-      # Load the appropriate lock file
+      # Load the appropriate lock file (explicit lockFile wins)
       lock =
-        if hasCMakeLock then
+        if lockFile != null then
+          builtins.fromJSON (builtins.readFile lockFile)
+        else if hasCMakeLock then
           builtins.fromJSON (builtins.readFile cmakeLockPath)
         else if hasCPMLock then
           let
@@ -181,64 +202,53 @@ let
         else
           { version = "1.0"; dependencies = { }; };
 
-      dependency = import ./dependency.nix { inherit lib; };
-
-      # Auto-generate all fetchers from the lock file
-      # No manual specification needed!
-      fetchers = lib.mapAttrs
-        (name: dep:
-          if dep ? method && dep ? args then
-          # Instantiate the fetcher from the lock file
-            pkgs.${dep.method} dep.args
-          else
-            null
-        )
-        (lock.dependencies or { });
-
-      # Filter out null fetchers
-      validFetchers = lib.filterAttrs (n: v: v != null) fetchers;
+      # Auto-generate all fetchers from the lock file.
+      validFetchers = lib.filterAttrs (_: v: v != null)
+        (lockFetchers { inherit lock; });
 
       workspace = rec {
         inherit workspaceRoot lock;
 
-        # Create overlay that provides all dependencies as CMake packages
+        # Create overlay that provides all dependencies as CMake packages.
+        # `sourcePreference` is accepted for backwards compatibility but
+        # currently only "source" (build from fetched sources) exists.
         mkCMakeOverlay = { sourcePreference ? "source" }:
-          mkProjectOverlay {
-            inherit lock;
-            fetchers = validFetchers;
-          };
+          lib.warnIf (sourcePreference != "source")
+            "nix-cmake: sourcePreference '${sourcePreference}' is not implemented; using \"source\""
+            (mkProjectOverlay {
+              inherit lock;
+              fetchers = validFetchers;
+            });
 
-        # Dependency groups (similar to uv2nix's workspace.deps.all, workspace.deps.default)
+        # Dependency groups (similar to uv2nix's workspace.deps).
+        # `default` currently equals `all`: which lock entries are direct
+        # dependencies is not recorded in the lock file yet.
         deps = {
-          # All dependencies from lock file
           all = builtins.attrNames (lock.dependencies or { });
-          # Just the direct dependencies (could parse CMakeLists.txt for this)
-          default = builtins.attrNames (lock.dependencies or { });
+          default = deps.all;
         };
 
-        # Build the package with lock file dependencies automatically applied
+        # Build the package with lock file dependencies automatically applied.
+        # Explicit `fetchContentDeps` in args extend/override the lock file.
         buildPackage = args:
           let
             builders = import ./builders.nix { inherit lib pkgs; };
           in
           builders.buildCMakePackage (args // {
             src = args.src or workspaceRoot;
-            # Auto-inject all fetchers from lock file
-            fetchContentDeps = validFetchers;
+            fetchContentDeps = validFetchers // (args.fetchContentDeps or { });
           });
 
-        # Development shell with all dependencies available
+        # Development shell with all dependency sources available via
+        # FETCHCONTENT_SOURCE_DIR_* environment variables.
         mkShell = { nativeBuildInputs ? [ ], ... } @ args:
           let
-            # Create a derivation with all dependencies built
-            depsEnv = pkgs.stdenv.mkDerivation {
-              name = "cmake-deps-env";
-              dontUnpack = true;
-              dontBuild = true;
-              installPhase = "mkdir -p $out";
-              # Make all dependencies available
-              buildInputs = builtins.attrValues validFetchers;
-            };
+            # Bash cannot export variables with '-' (or other non-identifier
+            # characters) in their name, so only export deps whose
+            # FetchContent name is a valid shell identifier.
+            shellFetchers = lib.filterAttrs
+              (name: _: builtins.match "[A-Za-z_][A-Za-z0-9_]*" name != null)
+              validFetchers;
           in
           pkgs.mkShell (args // {
             nativeBuildInputs = nativeBuildInputs ++ [
@@ -249,7 +259,7 @@ let
               export CMAKE_EXPORT_COMPILE_COMMANDS=ON
               ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: src:
                 "export FETCHCONTENT_SOURCE_DIR_${lib.toUpper name}=${src}"
-              ) validFetchers)}
+              ) shellFetchers)}
               echo "Nix-CMake: Development environment ready"
               echo "Nix-CMake: ${toString (builtins.length deps.all)} dependencies available"
             '';
@@ -267,5 +277,5 @@ let
 
 in
 {
-  inherit discoverDependencies recursiveDiscover extractFromCodemodel extractFromDiscoveryLog mkProjectOverlay loadWorkspace generateLock;
+  inherit discoverDependencies recursiveDiscover extractFromCodemodel extractFromDiscoveryLog lockFetchers mkProjectOverlay loadWorkspace generateLock;
 }

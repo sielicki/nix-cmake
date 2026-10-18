@@ -20,7 +20,7 @@ let
           url = dep.gitRepository;
           rev = if dep ? gitTag && dep.gitTag != "" then dep.gitTag else "HEAD";
           # Use a placeholder hash that triggers a hash mismatch error with the actual hash
-          sha256 = dep.hash or (lib.fakeSha256 or "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+          hash = dep.hash or lib.fakeHash;
         };
       }
     else if dep ? url && dep.url != "" then
@@ -28,19 +28,13 @@ let
         type = "url";
         method = "fetchurl";
         args = {
-          url = dep.url;
-          sha256 = dep.hash or (lib.fakeSha256 or "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
-        };
-      }
-    else if dep ? sourceDir && dep.sourceDir != "" then
-      {
-        type = "path";
-        method = "path"; # Mock method if needed, or just keep as info
-        args = {
-          path = dep.sourceDir;
+          inherit (dep) url;
+          hash = dep.hash or lib.fakeHash;
         };
       }
     else
+    # Local SOURCE_DIR dependencies and entries with no fetchable
+    # location cannot become Nix fetchers.
       null;
 
   # Generates a list of fetcher specifications from a discovery log
@@ -54,10 +48,13 @@ let
   generateLockFromLog = logPath:
     let
       deps = loadDiscoveryLog logPath;
+      # Dependencies without a derivable fetcher (e.g. no git URL) cannot
+      # become lock entries; drop them instead of crashing on `null // ...`.
+      fetchable = lib.filter (dep: deriveFetcher dep != null) deps;
       # Create an attrset of dependencies indexed by name
       lockDeps = builtins.listToAttrs (map
         (dep: {
-          name = dep.name;
+          inherit (dep) name;
           value = (deriveFetcher dep) // {
             inherit (dep) name;
             version = dep.version or "unknown";
@@ -65,7 +62,7 @@ let
             metadata = builtins.removeAttrs dep [ "name" "hash" ];
           };
         })
-        deps);
+        fetchable);
     in
     {
       version = "1.0";

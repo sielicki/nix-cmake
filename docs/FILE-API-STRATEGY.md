@@ -1,5 +1,9 @@
 # File API Strategy: The Superior Approach
 
+> **Status: design exploration.** This document describes a direction
+> that is not (fully) implemented. For what ships today, see
+> [API.md](API.md) and [ROADMAP.md](ROADMAP.md).
+
 ## Executive Summary
 
 Instead of parsing `CMakeLists.txt`, we use **CMake's File API** to extract dependency information. This approach:

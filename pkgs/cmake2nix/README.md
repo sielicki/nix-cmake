@@ -15,9 +15,9 @@ This demonstrates the complete workflow that cmake2nix enables for C++ projects.
 
 ## Dependencies (via CPM)
 
-- **CLI11** (2.4.1) - Command-line argument parsing
-- **nlohmann/json** (3.11.3) - JSON parsing and generation
-- **fmt** (10.2.1) - Modern C++ formatting
+- **CLI11** (2.6.1) - Command-line argument parsing
+- **nlohmann/json** (3.12.0) - JSON parsing and generation
+- **fmt** (12.1.0) - Modern C++ formatting
 
 All dependencies are managed declaratively and can be pre-fetched by Nix!
 
@@ -25,7 +25,7 @@ All dependencies are managed declaratively and can be pre-fetched by Nix!
 
 ### With Nix (recommended)
 ```bash
-nix build .#cmake2nix-cpp
+nix build .#cmake2nix
 ./result/bin/cmake2nix --help
 ```
 
@@ -39,36 +39,41 @@ ninja
 
 ## Generating cmake2nix's Own Lock File
 
-This is the meta part! To generate cmake2nix's own dependency lock file:
+Discovery shells out to Nix and needs `NIX_PATH` entries for
+`<nixpkgs>` and `<nix-cmake>` (pointing at a nix-cmake checkout):
+
+```bash
+export NIX_PATH="nixpkgs=$(nix eval --raw nixpkgs#path 2>/dev/null || echo /path/to/nixpkgs):nix-cmake=$PWD"
+```
+
+To generate cmake2nix's own dependency lock file:
 
 ```bash
 # Build cmake2nix first
-nix build .#cmake2nix-cpp
+nix build .#cmake2nix
 
 # Use it to discover its own dependencies
 ./result/bin/cmake2nix discover \
-  --input pkgs/cmake2nix-cpp/CMakeLists.txt \
-  --output pkgs/cmake2nix-cpp/cmake-lock.json
+  --input pkgs/cmake2nix/CMakeLists.txt \
+  --output pkgs/cmake2nix/cmake-lock.json
 
 # Prefetch hashes
 ./result/bin/cmake2nix prefetch \
-  --lock-file pkgs/cmake2nix-cpp/cmake-lock.json
+  --lock-file pkgs/cmake2nix/cmake-lock.json
 
 # Generate Nix expressions
 ./result/bin/cmake2nix generate \
-  --lock-file pkgs/cmake2nix-cpp/cmake-lock.json \
-  --output pkgs/cmake2nix-cpp/nix/
-```
-
-Or use the Makefile target:
-```bash
-cd pkgs/cmake2nix-cpp
-make generate-lockfile
+  --lock-file pkgs/cmake2nix/cmake-lock.json \
+  --output pkgs/cmake2nix/nix/
 ```
 
 ## Usage
 
-See the main cmake2nix documentation. This C++ implementation provides the same interface as the shell version but with better performance and error handling.
+Run `cmake2nix --help`. With no subcommand it performs the full
+`discover` + `prefetch` + `generate` workflow. Generated expressions
+(`default.nix`, `cmake-env.nix`, `cmake-packages.nix`) use the legacy
+`nix-build`/`nix-shell` interface and import `<nix-cmake/lib>` via
+`NIX_PATH`.
 
 ## Architecture
 

@@ -1,17 +1,13 @@
 { installShellFiles
 , buildPackages
 , bzip2
-, callPackage
 , cmakeDependencyHook
 , cmakeToolchainHook
 , curl
 , cmakeMinimal
-, ninja
 , expat
 , fetchFromGitHub
-, fetchurl
 , gitUpdater
-, jsoncpp
 , lib
 , libarchive
 , libuv
@@ -19,65 +15,51 @@
 , nghttp2
 , openssl
 , ps
-, #swift,
-  sysctl
-, replaceVars
 , rhash
-, sphinx
 , stdenv
-, texinfo
-, writeText
-, writeTextFile
 , xz
 , zlib
 , zstd
-, libsForQt5
-, buildDocs ? true
-  #cppdap,
 }:
-let
-  inherit (libsForQt5) qtbase wrapQtAppsHook;
-in
+
 stdenv.mkDerivation rec {
   pname = "cmake";
-  version = "4.2.1";
+  version = "4.4.3";
 
   src = fetchFromGitHub {
     owner = "Kitware";
     repo = "CMake";
     rev = "v${version}";
-    hash = "sha256-lZ46Zq2HUDFw8J2kj4C6aclEWXy1MNOIKD9PVQ9WP8s=";
+    hash = "sha256-oVJpBWhLPWkFhQYu4Ueh5Q0+mCapncS2MjoSK/12SDg=";
   };
 
-  # CMake 4.2 brings features important for nix-cmake:
+  # CMake 4.x brings features important for nix-cmake:
   # - Enhanced file-based API (codemodel v2.9) with imported targets
   # - Improved link dependency tracking (linkLibraries, interfaceLinkLibraries)
   # - Better transitive dependency support
   # - Foundation for CPS (Common Package Specification) integration
-  depsBuildBuild = with buildPackages; [ stdenv.cc ninja which cmakeMinimal sysctl ];
+  # Note: reference `cmakeMinimal` (the argument, i.e. the in-tree bootstrap)
+  # explicitly; `with buildPackages;` would shadow it with nixpkgs' own.
+  depsBuildBuild = [
+    buildPackages.stdenv.cc
+    buildPackages.ninja
+    buildPackages.which
+    cmakeMinimal
+    buildPackages.sysctl
+  ];
   nativeBuildInputs = setupHooks ++ [ installShellFiles ];
 
+  # No "man" output: man pages require building the Sphinx docs,
+  # which this derivation deliberately does not do.
   outputs =
-    [ "dev" "out" "doc" "man" ];
-  #    [ "out" ];
-  #++ lib.optionals buildDocs [
-  #  "info"
-  #  "man"
-  #];
+    [ "dev" "out" "doc" ];
   separateDebugInfo = true;
   setOutputFlags = false;
 
   buildInputs = [
     ps
-    openssl
-    # unpackaged:
-    #   cppdap
-
-
-    # recursive dependency:
-    #jsoncpp
-
-    # good:
+    (lib.getDev openssl)
+    (lib.getLib openssl)
     (lib.getDev ncurses)
     (lib.getLib ncurses)
     (lib.getDev curl)
@@ -102,7 +84,8 @@ stdenv.mkDerivation rec {
     (lib.getLib libuv)
   ];
 
-  configureFlags = [
+  cmakeFlags = [
+    "-GNinja"
     "-DCMAKE_USE_OPENSSL=ON"
   ];
 

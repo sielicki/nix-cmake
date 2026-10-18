@@ -1,5 +1,9 @@
 # CMake as Builder: Pure CMake-Driven Nix Builds
 
+> **Status: design exploration.** This document describes a direction
+> that is not (fully) implemented. For what ships today, see
+> [API.md](API.md) and [ROADMAP.md](ROADMAP.md).
+
 ## Vision
 
 Instead of using bash as the orchestrator and CMake as a tool, **make CMake the builder itself**. This aligns with the pure toolchain philosophy: let the build system drive the build, not shell scripts.

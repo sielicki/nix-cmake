@@ -1,30 +1,28 @@
 { installShellFiles
 , buildPackages
-, callPackage
 , darwin
 , fetchFromGitHub
 , git
 , gitUpdater
 , lib
+, libiconv
 , libidn2
 , makeBinaryWrapper
 , ninja
 , ps
 , sysctl
 , stdenv
-, #  zlib,
-  #curlMinimal ? null,
 }:
 let
   pkg = stdenv.mkDerivation rec {
     pname = "cmakeMinimal";
-    version = "4.2.1";
+    version = "4.4.3";
 
     src = fetchFromGitHub {
       owner = "Kitware";
       repo = "CMake";
       rev = "v${version}";
-      hash = "sha256-lZ46Zq2HUDFw8J2kj4C6aclEWXy1MNOIKD9PVQ9WP8s=";
+      hash = "sha256-oVJpBWhLPWkFhQYu4Ueh5Q0+mCapncS2MjoSK/12SDg=";
     };
 
 
@@ -49,63 +47,50 @@ let
     # Provide basic CMake setup hook for packages that use cmakeMinimal as a build dependency
     setupHooks = [ ./setup-hook.sh ];
 
-    buildInputs = [ (lib.getDev libidn2) (lib.getLib libidn2) ] ++
-      #  (lib.optionals (curlMinimal == null) [
-      #  (lib.getDev curlMinimal) (lib.getLib curlMinimal) 
-      #  (lib.getDev zlib) (lib.getLib zlib) 
-      #])#  
-      [ ];
+    # libiconv: CMake >= 4.4's vendored cmlibarchive requires iconv at
+    # configure time even for the bootstrap build.
+    buildInputs = [
+      (lib.getDev libidn2)
+      (lib.getLib libidn2)
+      (lib.getDev libiconv)
+      (lib.getLib libiconv)
+    ];
 
-    configureFlags = (lib.cli.toGNUCommandLine
-      {
-        optionValueSeparator = "=";
-        mkBool = k: v:
-          if (lib.strings.hasPrefix "system" k) then [ "--${if v then "" else "no-"}${k}" ]
-          else lib.optionals v [ "--${k}" ]
-        ;
-      }
-      {
-        #system-curl = (curlMinimal != null);
-        #system-zlib = (curlMinimal != null);
-        system-curl = false;
-        system-zlib = false;
-        generator = "Ninja";
-        system-libs = false;
-        system-expat = false;
-        system-jsoncpp = false;
-        system-bzip2 = false;
-        system-liblzma = false;
-        system-nghttp2 = false;
-        system-zstd = false;
-        system-libarchive = false;
-        system-librhash = false;
-        system-libuv = false;
-
-        enable-ccache = stdenv.cc.isCcache or false;
-        parallel = "$NIX_BUILD_CORES";
-
-        prefix = builtins.placeholder "out";
-        bindir = "bin";
-        datadir = "share";
-        xdgdatadir = "share";
-        docdir = "share/doc";
-        mandir = "share/man";
-        sphinx-info = false;
-        sphinx-man = false;
-        bootstrap-system-libuv = false;
-        bootstrap-system-jsoncpp = false;
-        bootstrap-system-librhash = false;
-        system-cppdap = false;
-        verbose = true;
-        # NOTE: Don't use --init during bootstrap!
-        # The bootstrap process doesn't use project() in the normal way,
-        # so CMAKE_PROJECT_TOP_LEVEL_INCLUDES would try to set the dependency
-        # provider outside of project() context, which is an error.
-        # The bootstrap build doesn't need FetchContent interception anyway.
-        # init = "${../cmake-dependency-hook/cmakeBuildHook.cmake}";
-      }) ++ [
+    # Explicit bootstrap flags: use only CMake's vendored libraries.
+    # NOTE: Don't use --init during bootstrap! The bootstrap process
+    # doesn't use project() in the normal way, so
+    # CMAKE_PROJECT_TOP_LEVEL_INCLUDES would try to set the dependency
+    # provider outside of project() context, which is an error. The
+    # bootstrap build doesn't need FetchContent interception anyway.
+    configureFlags = [
+      "--no-system-libs"
+      "--no-system-curl"
+      "--no-system-zlib"
+      "--no-system-expat"
+      "--no-system-jsoncpp"
+      "--no-system-bzip2"
+      "--no-system-liblzma"
+      "--no-system-nghttp2"
+      "--no-system-zstd"
+      "--no-system-libarchive"
+      "--no-system-librhash"
+      "--no-system-libuv"
+      "--no-system-cppdap"
+      "--generator=Ninja"
+      "--parallel=$NIX_BUILD_CORES"
+      "--prefix=${builtins.placeholder "out"}"
+      "--bindir=bin"
+      "--datadir=share"
+      "--xdgdatadir=share"
+      "--docdir=share/doc"
+      "--mandir=share/man"
+      "--verbose"
+    ] ++ lib.optional (stdenv.cc.isCcache or false) "--enable-ccache" ++ [
       "--"
       "-DCMAKE_USE_OPENSSL=OFF"
+      # CMake >= 4.4's cmlibarchive requires iconv; the bootstrap CMake's
+      # find_path cannot search Nix include dirs, so point it at the header.
+      "-DICONV_INCLUDE_DIR=${lib.getDev (if stdenv.hostPlatform.isDarwin then libiconv else stdenv.cc.libc)}/include"
     ];
 
 

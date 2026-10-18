@@ -52,17 +52,20 @@ let
         urlMatch = builtins.match ".*URL[ \n]+([^ \n]+).*" optionsText;
         url = if urlMatch != null then builtins.elemAt urlMatch 0 else null;
 
-        # Extract URL_HASH
+        # Extract URL_HASH (kept as the raw hex digest; see cpmToLockFormat
+        # for why it is not mislabelled as an SRI hash)
         urlHashMatch = builtins.match ".*URL_HASH[ \n]+SHA256=([a-fA-F0-9]+).*" optionsText;
-        urlHash = if urlHashMatch != null then "sha256-${builtins.elemAt urlHashMatch 0}" else null;
+        urlHash = if urlHashMatch != null then builtins.elemAt urlHashMatch 0 else null;
 
       in
       {
         inherit name version;
         githubRepository = githubRepo;
-        gitRepository = gitRepository;
-        gitTag = gitTag;
-        url = url;
+        inherit gitRepository;
+        inherit gitTag;
+        inherit url;
+        inherit urlHash;
+        # Backwards-compatible alias (hex digest, not SRI).
         hash = urlHash;
       };
 
@@ -84,42 +87,54 @@ let
   # Convert CPM package to nix-cmake lock format
   cpmToLockFormat = cpmPkg:
     let
-      # Determine the fetcher method based on available fields
+      # `x or y` only falls back when the attribute is missing, not when
+      # it is null, so nullable fields need explicit handling.
+      firstNonNull = lib.findFirst (v: v != null) null;
+      rev = firstNonNull [ cpmPkg.version cpmPkg.gitTag "HEAD" ];
+      version = firstNonNull [ cpmPkg.version cpmPkg.gitTag "unknown" ];
+      urlHash = cpmPkg.urlHash or cpmPkg.hash or null;
+
       fetcher =
         if cpmPkg.githubRepository != null then
           let
             parts = lib.splitString "/" cpmPkg.githubRepository;
-            owner = builtins.elemAt parts 0;
-            repo = builtins.elemAt parts 1;
           in
-          {
+          if builtins.length parts != 2 then null
+          else {
             method = "fetchFromGitHub";
             args = {
-              inherit owner repo;
-              rev = cpmPkg.version or cpmPkg.gitTag or "HEAD";
-              hash = cpmPkg.hash or lib.fakeHash;
+              owner = builtins.elemAt parts 0;
+              repo = builtins.elemAt parts 1;
+              inherit rev;
+              # CPM locks carry no archive hash for git dependencies;
+              # the placeholder fails with the correct hash on first build.
+              hash = lib.fakeHash;
             };
           }
         else if cpmPkg.gitRepository != null then {
           method = "fetchgit";
           args = {
             url = cpmPkg.gitRepository;
-            rev = cpmPkg.gitTag or cpmPkg.version or "HEAD";
-            hash = cpmPkg.hash or lib.fakeHash;
+            inherit rev;
+            hash = lib.fakeHash;
           };
         }
         else if cpmPkg.url != null then {
           method = "fetchurl";
-          args = {
-            url = cpmPkg.url;
-            hash = cpmPkg.hash or lib.fakeHash;
-          };
+          # URL_HASH is a hex digest. It is passed through as the legacy
+          # `sha256` (hex/base32) argument; labelling it `sha256-<hex>`
+          # would produce an invalid SRI hash (SRI payloads are base64).
+          args = { inherit (cpmPkg) url; } // (
+            if urlHash != null then { sha256 = urlHash; }
+            else { hash = lib.fakeHash; }
+          );
         }
         else null;
     in
     if fetcher == null then null
     else {
-      inherit (cpmPkg) name version;
+      inherit (cpmPkg) name;
+      inherit version;
       inherit (fetcher) method args;
       metadata = {
         source = "cpm-package-lock";
@@ -135,7 +150,7 @@ let
       validPackages = lib.filter (p: p != null) lockPackages;
       packagesAttrSet = builtins.listToAttrs (map
         (pkg: {
-          name = pkg.name;
+          inherit (pkg) name;
           value = pkg;
         })
         validPackages);

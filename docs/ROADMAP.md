@@ -1,45 +1,55 @@
 # nix-cmake Roadmap
 
-`nix-cmake` is a state-of-the-art Nix integration for CMake, bringing the packaging ergonomics of modern ecosystems like Rust (crane) and Python (uv2nix) to the C++ world.
+`nix-cmake` brings the packaging ergonomics of modern ecosystems like Rust (crane) and Python (uv2nix) to C++/CMake projects. This roadmap records what actually ships today (covered by `nix flake check`) versus what is exploratory.
 
-## Phase 0: Foundation (Complete)
-- [x] **Zero-Patch Philosophy**: Verified support for standard Kitware CMake 4.2.1 without Nixpkgs patches.
-- [x] **Dependency Provider**: Interception of `FetchContent` and `CPM` calls.
-- [x] **Toolchain Hook**: Robust cross-compilation support via declarative `CMAKE_TOOLCHAIN_FILE`.
+## Phase 0: Foundation (shipped)
 
-## Phase 1: File API & Discovery (Complete)
-- [x] **File API Integration**: Accurate extraction of project targets and metadata via CMake File API v2.
-- [x] **Recursive Discovery**: FOD-based exploration of nested dependency trees for modular projects.
-- [x] **JSON Discovery Logs**: Structured, parseable logging of intercepted dependencies.
-- [x] **Darwin Stability**: Automated bypassing of platform compiler/linker checks during discovery.
+- [x] **Zero-Patch Philosophy**: Standard Kitware CMake 4.4.3 (`cmakeMinimal` bootstrap + full `cmake`) without Nixpkgs patches.
+- [x] **Dependency Provider**: Interception of `FetchContent_MakeAvailable` and `find_package` via `CMAKE_PROJECT_TOP_LEVEL_INCLUDES`, with `FETCHCONTENT_SOURCE_DIR_*` fallback for `FetchContent_Populate`/CPM.
+- [x] **Toolchain Hook**: `CMAKE_TOOLCHAIN_FILE` generated from an stdenv (cc wrappers, correct system mapping).
 
-## Phase 2: Lock Files & Nix Modeling (Complete)
-- [x] **Unified Lock File Standard**: Standardized `cmake-lock.json` format for transitive dependency pinning.
-- [x] **Automated Fetcher Generation**: A Nix-based generator that converts discovery logs into `fetchgit`, `fetchurl`, or local `path` specifications.
-- [x] **Project Overlay Generation**: Refined `mkProjectOverlay` to handle transitive target-to-derivation mapping and lock file consumption.
-- [x] **Verified Implementation**: Full "2nix" flow verified with recursive project tests.
+## Phase 1: Discovery (shipped)
 
-## Phase 3: Developer Ergonomics & Incremental Builds (Complete)
-- [x] **`buildDepsOnly` Implementation**: A `crane`-style builder that pre-configures and builds all dependencies into a single derivation to maximize cache hits.
-- [x] **DevShell & IDE Integration**: 
-    - [x] Automatic `compile_commands.json` generation enabled in dev shells.
-    - [x] Ergonomic `mkShell` API for standardized development environments.
-- [x] **Targeted Overrides**: A high-level `Workspace.override` API for flexible dependency swapping.
+- [x] **Discovery mode**: Configure-time logging of intercepted dependencies to a JSON-lines log, with stubbed targets.
+- [x] **File API replies**: `discoverDependencies` collects codemodel/cache replies next to the log.
+- [x] **Recursive discovery**: FOD variant (`recursiveDiscover`) that lets FetchContent proceed.
+- [ ] **Darwin verification**: Discovery bypasses compiler checks, but the check suite currently runs on Linux; Darwin is untested in CI.
 
-## Phase 4: CLI & Ecosystem Tooling (Complete)
-- [x] **`cmake2nix` CLI**:
-    - [x] `lock`: Automated updating of `cmake-lock.json`.
-    - [x] `init`: One-command scaffolding for new projects.
-- [x] **`flake-parts` Module**: Declarative `cmake-project` configuration for the `flake-parts` ecosystem.
-- [x] **Flake Integration**: First-class support for `cmake2nix` and `flakeModules.default`.
+## Phase 2: Lockfiles (shipped, with limits)
 
-## Phase 5: Advanced Ecosystems & Future Tech (Complete)
-- [x] **RAPIDS CMake Support**: Integration patterns for the NVIDIA RAPIDS ecosystem.
-- [x] **CPS (Common Package Specification) Integration**: Prototype support for CPS metadata parsing.
-- [x] **Multi-Toolchain Support**: High-level library for switching between Clang, GCC, and custom toolchains.
+- [x] **`cmake-lock.json`**: name -> `{version, method, args, metadata}` consumed by builders, workspace, dynamic builds, and `cmake2nix`.
+- [x] **CPM `package-lock.cmake` import** (note: git dependencies receive placeholder hashes, by design of the CPM format).
+- [x] **Project overlay**: `mkProjectOverlay` builds each lock entry as a package on demand.
+- [ ] **Transitive/direct distinction**: `workspace.deps.default` currently equals `deps.all`.
 
-## Future Outlook
-- [ ] **Full CPS Implementation**: Moving from prototype to industrial-strength package mapping.
-- [ ] **Extended Cross-Compilation**: Pre-configured toolchain bundles for Embedded and Mobile platforms.
-- [ ] **Auto-Conversion**: Deep project analysis to automatically generate full Nix expressions from complex CMake bases.
-- [ ] **Binary Cache Interop**: Integration with pre-built binary packages from other package managers (vcpkg/Conan) when source builds are restricted.
+## Phase 3: Builder ergonomics (partial)
+
+- [x] `builders.buildCMakePackage`, `workspace.buildPackage`, `workspace.mkShell`.
+- [~] **`buildDepsOnly`**: experimental; preserves the full build tree, it does not isolate dependency targets.
+- [ ] **Workspace dependency overrides API**: overrides today are plain attrset merges (`fetchContentDeps //`, overlay `fetchers`); a dedicated `override` API does not exist yet.
+
+## Phase 4: Dynamic derivations (shipped, evolving)
+
+- [x] `lib.dynamic.buildCMakePackage`: discovery + build generation at build time via a text-hashed producer derivation and `builtins.outputOf`; verified with `--option allow-import-from-derivation false`. See [DYNAMIC-DERIVATIONS.md](DYNAMIC-DERIVATIONS.md).
+- [ ] Per-target/per-dependency generated derivations from File API metadata.
+- [ ] Lockfile regeneration inside the producer (hashes still require a prefetch step outside the sandbox).
+
+## Phase 5: Tooling (shipped, evolving)
+
+- [x] **`cmake2nix` CLI** (C++): `discover`, `prefetch`, `generate`, `lock`, `init`, `shell`, `build`. Discovery expects `NIX_PATH` entries for `<nixpkgs>`/`<nix-cmake>`; generated expressions use the legacy `nix-build`/`nix-shell` interface.
+- [x] **flake-parts module**: `perSystem.cmake-project`.
+- [x] **RAPIDS**: `rapids-cmake` package + stdexec test fixture (pinned, old).
+- [x] **CPS (phase 1)**: opt-in CPS generation in the builders
+  (`cps.exports`, via `CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO`),
+  `cmake-cps-compat` Threads description, spec-shaped parser
+  (`lib.cps`), and a transitive-consumption check. See
+  [CPS-INTEGRATION.md](CPS-INTEGRATION.md).
+- [~] **Multi-toolchain**: `lib.toolchains` selects Clang/GCC stdenvs; `extraFlags` is accepted but unimplemented.
+
+## Future outlook
+
+- [ ] CPS phase 2: CPS as discovery/lock interchange, more compat descriptions, dynamic-build awareness.
+- [ ] Extended cross-compilation (tested Darwin + embedded toolchains).
+- [ ] Auto-conversion of complex projects to standalone Nix expressions.
+- [ ] Binary cache interop (vcpkg/Conan) where source builds are restricted.
+- [ ] Structured-attrs aware hooks (cmakeFlags without space-splitting limits).

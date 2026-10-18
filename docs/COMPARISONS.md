@@ -1,5 +1,9 @@
 # Comparison to Other Ecosystems
 
+> **Status: design exploration.** This document describes a direction
+> that is not (fully) implemented. For what ships today, see
+> [API.md](API.md) and [ROADMAP.md](ROADMAP.md).
+
 `nix-cmake` aims to provide a declarative, `*2nix`-style solution for CMake projects, making them as easy to package in Nix as Python projects with `uv2nix` or Rust projects with `crane`.
 
 | Ecosystem | Tool | Nix Integration | CMake Equivalent |

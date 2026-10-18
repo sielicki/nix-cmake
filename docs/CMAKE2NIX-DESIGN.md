@@ -1,5 +1,9 @@
 # cmake2nix Design: Non-Flake Workflow
 
+> **Status: design exploration.** This document describes a direction
+> that is not (fully) implemented. For what ships today, see
+> [API.md](API.md) and [ROADMAP.md](ROADMAP.md).
+
 ## Motivation
 
 Inspired by `node2nix`, `cmake2nix` should work seamlessly without requiring a flake. This allows:

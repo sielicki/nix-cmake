@@ -252,13 +252,26 @@ function(process_nix_dependencies hostOffset targetOffset)
         list(REMOVE_DUPLICATES CMAKE_SYSTEM_APPBUNDLE_PATH)
     endif()
     
-    set(CMAKE_SYSTEM_PREFIX_PATH "${CMAKE_SYSTEM_PREFIX_PATH}" CACHE INTERNAL "System prefix paths from Nix")
-    set(CMAKE_SYSTEM_INCLUDE_PATH "${CMAKE_SYSTEM_INCLUDE_PATH}" CACHE INTERNAL "System include paths from Nix")
-    set(CMAKE_SYSTEM_LIBRARY_PATH "${CMAKE_SYSTEM_LIBRARY_PATH}" CACHE INTERNAL "System library paths from Nix")
-    set(CMAKE_SYSTEM_PROGRAM_PATH "${CMAKE_SYSTEM_PROGRAM_PATH}" CACHE INTERNAL "System program paths from Nix")
-    set(CMAKE_SYSTEM_FRAMEWORK_PATH "${CMAKE_SYSTEM_FRAMEWORK_PATH}" CACHE INTERNAL "System framework paths from Nix")
-    set(CMAKE_SYSTEM_APPBUNDLE_PATH "${CMAKE_SYSTEM_APPBUNDLE_PATH}" CACHE INTERNAL "System app bundle paths from Nix")
-    
+    set(CMAKE_SYSTEM_PREFIX_PATH "${CMAKE_SYSTEM_PREFIX_PATH}" CACHE INTERNAL "System prefix paths from Nix" FORCE)
+    set(CMAKE_SYSTEM_INCLUDE_PATH "${CMAKE_SYSTEM_INCLUDE_PATH}" CACHE INTERNAL "System include paths from Nix" FORCE)
+    set(CMAKE_SYSTEM_LIBRARY_PATH "${CMAKE_SYSTEM_LIBRARY_PATH}" CACHE INTERNAL "System library paths from Nix" FORCE)
+    set(CMAKE_SYSTEM_PROGRAM_PATH "${CMAKE_SYSTEM_PROGRAM_PATH}" CACHE INTERNAL "System program paths from Nix" FORCE)
+    set(CMAKE_SYSTEM_FRAMEWORK_PATH "${CMAKE_SYSTEM_FRAMEWORK_PATH}" CACHE INTERNAL "System framework paths from Nix" FORCE)
+    set(CMAKE_SYSTEM_APPBUNDLE_PATH "${CMAKE_SYSTEM_APPBUNDLE_PATH}" CACHE INTERNAL "System app bundle paths from Nix" FORCE)
+
+    # Also publish the Nix prefixes on CMAKE_PREFIX_PATH. Toolchain and
+    # platform initialisation may recompute CMAKE_SYSTEM_PREFIX_PATH
+    # after this hook runs (discarding the entries above), while
+    # CMAKE_PREFIX_PATH is preserved and is searched by both config-
+    # and module-mode find_package/find_path/find_library calls.
+    set(_nix_prefix_path "${CMAKE_SYSTEM_PREFIX_PATH}")
+    if(CMAKE_PREFIX_PATH)
+        list(APPEND _nix_prefix_path ${CMAKE_PREFIX_PATH})
+        list(REMOVE_DUPLICATES _nix_prefix_path)
+    endif()
+    set(CMAKE_PREFIX_PATH "${_nix_prefix_path}" CACHE PATH "Prefix paths including Nix inputs" FORCE)
+    set(CMAKE_PREFIX_PATH "${_nix_prefix_path}" PARENT_SCOPE)
+
     message(STATUS "Nix dependencies processed successfully")
 endfunction()
 
@@ -310,6 +323,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
 
         set_property(GLOBAL PROPERTY NIX_PROVIDER_TRIGGERED TRUE)
         if("${method}" STREQUAL "FETCHCONTENT_MAKEAVAILABLE_SERIAL")
+            set(_nix_stubbed FALSE)
             set(_args "${ARGN}")
             list(GET _args 0 dep_name)
             message(STATUS "Nix: Intercepting FetchContent_MakeAvailable(${dep_name})")
@@ -397,10 +411,15 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
                         endif()
                     endforeach()
 
-                    return()
+                    # NOTE: do not use return() here. This provider is a
+                    # macro, so return() would return from the *caller's*
+                    # CMakeLists.txt, skipping everything after the
+                    # FetchContent_MakeAvailable call in that directory.
+                    set(_nix_stubbed TRUE)
                 endif()
             endif()
 
+            if(NOT _nix_stubbed)
             # Normal build mode logic
             find_package(${dep_name} BYPASS_PROVIDER QUIET GLOBAL)
 
@@ -414,6 +433,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
 
             if(${dep_name}_FOUND AND _has_targets)
                 message(STATUS "Nix: Using pre-built CMake package for ${dep_name}")
+                string(TOLOWER "${dep_name}" _dep_name_lower)
                 set(_source_dir "")
                 set(_binary_dir "")
                 if(DEFINED ${dep_name}_DIR)
@@ -445,7 +465,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
                 # Check if we have a pre-fetched source from Nix via environment variable
                 string(TOUPPER "${dep_name}" _dep_name_upper)
                 set(_env_var_name "FETCHCONTENT_SOURCE_DIR_${_dep_name_upper}")
-                message(STATUS "Nix DEBUG: Checking for env var ${_env_var_name}")
+                message(DEBUG "Nix: Checking for env var ${_env_var_name}")
                 if(DEFINED ENV{${_env_var_name}})
                     set(_nix_source_dir "$ENV{${_env_var_name}}")
                     message(STATUS "Nix: Using pre-fetched source for ${dep_name} from ${_nix_source_dir}")
@@ -456,21 +476,40 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
                     # Also set it in the current scope for immediate use
                     set(FETCHCONTENT_SOURCE_DIR_${_dep_name_upper} "${_nix_source_dir}")
                 else()
-                    message(STATUS "Nix DEBUG: ${_env_var_name} is NOT defined in environment")
+                    message(DEBUG "Nix: ${_env_var_name} is NOT defined in environment")
                 endif()
+            endif()
             endif()
 
         elseif("${method}" STREQUAL "FIND_PACKAGE")
             set(_args "${ARGN}")
             list(GET _args 0 dep_name)
-            # Get arguments after the package name
+            # Get arguments after the package name. REQUIRED is handled
+            # explicitly below so that a missing required package is a
+            # hard error (as the project asked for), not silent undefined
+            # variables later.
             set(_find_args "${_args}")
             list(REMOVE_AT _find_args 0)  # Remove package name from args
+            set(_nix_required FALSE)
+            if("REQUIRED" IN_LIST _find_args)
+                set(_nix_required TRUE)
+            endif()
             list(REMOVE_ITEM _find_args "REQUIRED")
             message(STATUS "Nix: Intercepting find_package(${dep_name})")
-            find_package(${dep_name} ${_find_args} PATHS ${CMAKE_SYSTEM_PREFIX_PATH} NO_DEFAULT_PATH BYPASS_PROVIDER GLOBAL)
-            if(NOT ${dep_name}_FOUND)
-                find_package(${dep_name} ${_find_args} BYPASS_PROVIDER GLOBAL)
+            # Delegate to CMake's standard search (BYPASS_PROVIDER only).
+            # An earlier version first retried with
+            # `PATHS ${CMAKE_SYSTEM_PREFIX_PATH} NO_DEFAULT_PATH`, but
+            # PATHS entries are searched as explicit config directories
+            # without the usual prefix suffix patterns, which breaks
+            # CPS packages (e.g. <prefix>/share/cps/<name>/<name>.cps)
+            # and their transitive resolution. Nix inputs are already
+            # on CMAKE_PREFIX_PATH / CMAKE_SYSTEM_PREFIX_PATH, and
+            # impure system prefixes are excluded via
+            # CMAKE_SYSTEM_IGNORE_PREFIX_PATH, so the standard search
+            # is both sufficient and correct (including MODULE mode).
+            find_package(${dep_name} ${_find_args} BYPASS_PROVIDER GLOBAL)
+            if(NOT ${dep_name}_FOUND AND _nix_required)
+                message(FATAL_ERROR "Nix: required CMake package '${dep_name}' was not found in Nix inputs. Add it to buildInputs or cmake-lock.json.")
             endif()
         endif()
     endmacro()

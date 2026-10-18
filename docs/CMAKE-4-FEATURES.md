@@ -1,8 +1,8 @@
-# CMake 4.2 Features Relevant to nix-cmake
+# CMake 4.x Features Relevant to nix-cmake
 
 ## Overview
 
-nix-cmake now uses **CMake 4.2.1**, which brings several features that are valuable for our dependency management and CPS integration goals.
+nix-cmake uses **CMake 4.4.3** (this survey was originally written against 4.2), which brings several features that are valuable for our dependency management and CPS integration goals.
 
 ## Key Features for nix-cmake
 

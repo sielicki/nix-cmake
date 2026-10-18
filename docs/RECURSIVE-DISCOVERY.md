@@ -1,53 +1,59 @@
 # Recursive Dependency Discovery
 
-One of the most powerful features of `nix-cmake` is its ability to perform recursive dependency discovery. 
+Many C++ projects form a *tree* of dependencies: the top-level
+`CMakeLists.txt` fetches project B with `FetchContent`, and B in turn
+fetches its own dependencies. A one-level discovery pass (which stubs
+every dependency) never sees B's dependencies.
 
-## The Problem
-Many modern C++ projects use a "tree" of dependencies, where the top-level `CMakeLists.txt` uses `FetchContent` to download a library (e.g., Project B), and Project B in turn uses `FetchContent` to download its own dependencies (e.g., Project C). 
+## Approaches
 
-In a standard Nix sandbox, these downloads fail because network access is restricted.
+### 1. Dynamic derivations (preferred for builds)
 
-## The Solution: Fixed-Output Derivation (FOD)
-`nix-cmake` uses a two-pass approach to solve this:
+[`lib.dynamic`](DYNAMIC-DERIVATIONS.md) runs discovery at *build
+time* and generates the build graph from its results, with lockfile
+hashes providing the sources. This removes import-from-derivation
+from the loop entirely.
 
-1. **Discovery Pass (FOD)**: `nix-cmake` runs a "guest" CMake configuration in a derivation with `outputHash` (FOD). This pass is allowed to access the network. Our dependency provider hook intercepts every `FetchContent` call and logs the details (URLs, Git repositories, tags) to a structured JSON file.
-2. **Nix Library Processing**: Nix reads this log and generates fetchers for each dependency. These sources are then injected into the final build environment.
+### 2. Fixed-output discovery (lockfile maintenance)
 
-## Usage
-
-### 1. Perform a Recursive Discovery
-In your flake or Nix file, use `recursiveDiscover`:
+`workspace.recursiveDiscover` wraps `discoverDependencies` with
+`recursive = true` as a fixed-output derivation (FOD). FODs may access
+the network, so `FetchContent` is allowed to proceed and nested
+dependencies are logged as they are declared. The output hash must be
+updated whenever the discovered set changes (the usual FOD workflow:
+start from a placeholder hash, copy the correct hash from the error).
 
 ```nix
-discovery = nix-cmake.lib.workspace.recursiveDiscover {
+let
+  workspace = (nix-cmake.lib.workspace pkgs);
+in
+workspace.recursiveDiscover {
   src = ./.;
-  outputHash = "sha256-..."; # Initial hash or dummy
-};
+  outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+}
 ```
 
-### 2. Inspect the Discovery Log
-The resulting derivation contains a `discovery-log.json`. You can inspect it to see what was found:
+The result contains `discovery-log.json` (one JSON object per line)
+and File API replies under `reply/`:
+
 ```bash
 nix build .#discovery
 cat result/discovery-log.json
 ```
 
-### 3. Generate a Package Set
-Use `mkProjectOverlay` to create a standard Nixpkgs overlay from the discovery results:
+From a discovery result, a lock file structure can be produced with
+`workspace.generateLock`, and sources consumed through
+`workspace.loadWorkspace` / `mkProjectOverlay` (see [API.md](API.md)).
+Note that reading the discovery result during evaluation is
+import-from-derivation; that is fine for interactive lockfile
+maintenance, which is what this flow is for.
 
-```nix
-workspace = nix-cmake.lib.workspace.loadWorkspace {
-  src = ./.;
-  lockFile = ./cmake-lock.json; # Result of discovery
-};
+## Compiler-check handling
 
-# Extend pkgs with project dependencies
-pkgsWithDeps = pkgs.extend workspace.overlay;
-```
-
-## Platform-Specific Handling
-Recursive discovery often triggers CMake's compiler and linker checks. On platforms like macOS (Darwin), these checks can fail if dependencies like `-lSystem` aren't immediately available in the discovery environment.
-
-`nix-cmake` automatically handles this by:
-- Using `CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY` to bypass linker checks.
-- Forcing `CMAKE_C_COMPILER_WORKS=1` to allow configuration to proceed to the dependency discovery phase.
+Discovery configures with
+`CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY` and
+`CMAKE_C/CXX_COMPILER_WORKS=1`, so configuration reaches the
+dependency declarations even on platforms (e.g. Darwin) whose linker
+checks would otherwise fail before any `FetchContent` call runs. A
+failed configure still yields whatever log lines were written before
+the failure.

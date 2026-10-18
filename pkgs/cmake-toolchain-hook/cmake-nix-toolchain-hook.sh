@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 _cmakeToolchainSetupHook() {
   if [[ -z "${CMAKE_TOOLCHAIN_FILE:-}" ]]; then
     export CMAKE_TOOLCHAIN_FILE="@cmakeToolchainPath@"
